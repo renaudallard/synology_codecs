@@ -620,12 +620,19 @@ build_codecpack() {
     ln -sf ../pack/lib/ffmpeg41 "$staging/package/lib/ffmpeg41"
     ln -sf ../pack/lib/ffmpeg33-for-surveillance "$staging/package/lib/ffmpeg33-for-surveillance"
     ln -sf ../pack/lib/ffmpeg33-for-audio "$staging/package/lib/ffmpeg33-for-audio"
+    ln -sf ../pack/lib/ffmpeg41-for-synoface "$staging/package/lib/ffmpeg41-for-synoface"
+    ln -sf ../pack/lib/libva "$staging/package/lib/libva"
+
+    # pack/lib/ targets for synoface and libva
+    ln -sf ffmpeg41 "$staging/package/pack/lib/ffmpeg41-for-synoface"
+    mkdir -p "$staging/package/pack/lib/libva"
 
     # Update pack/INFO arch
     sed -i "s/^arch=.*/arch=\"${INFO_ARCH}\"/" "$staging/package/pack/INFO"
 
     cp "$ARCH_BUILD_DIR/libsynoame-license.so" "$staging/package/usr/lib/libsynoame-license.so"
     chmod +x "$staging/package/usr/bin/synoame-bin-check-license"
+    chmod +x "$staging/package/usr/bin/synoame-bin-request-codec"
 
     tar czf "$staging/package.tgz" -C "$staging/package" .
     rm -rf "$staging/package"

@@ -190,19 +190,20 @@ Then test with your apps:
     ├── codecpack/                   # CodecPack SPK sources
     │   ├── INFO                     # Package metadata (arch set at build time)
     │   ├── conf/
-    │   │   ├── privilege            # Run-as config (scripts run as root)
+    │   │   ├── privilege            # Run-as config (scripts run as root, SUID stubs)
     │   │   └── resource             # Package resource config
     │   ├── scripts/
-    │   │   ├── common               # SetPackStatus helper
+    │   │   ├── common               # Shared variables and SetPackStatus helper
     │   │   ├── postinst             # Copies activation files, sets pack status
+    │   │   ├── postuninst           # Cleans up status conf and download cache
     │   │   ├── start-stop-status    # Always reports running
     │   │   └── ...                  # Other lifecycle scripts (exit 0)
     │   └── package/
     │       ├── activation/          # activation.conf, offline_license.json
     │       ├── bin/                 # synocodectool (stub), symlinks to pack/bin/
-    │       ├── pack/                # INFO, bin/ with ffmpeg binaries (placed by build)
-    │       ├── lib/                 # symlinks to pack/lib/
-    │       ├── usr/bin/             # synoame-bin-check-license (stub)
+    │       ├── pack/                # INFO, bin/ and lib/ with ffmpeg (placed by build)
+    │       ├── lib/                 # symlinks to pack/lib/ (incl. synoface, libva)
+    │       ├── usr/bin/             # synoame-bin-check-license, synoame-bin-request-codec (stubs)
     │       └── usr/lib/             # patched .so (placed by build)
     └── sve/                         # SurveillanceVideoExtension SPK sources
         ├── INFO
@@ -210,8 +211,10 @@ Then test with your apps:
         │   ├── privilege            # Run-as config (scripts run as root)
         │   └── resource             # Package resource config
         ├── scripts/
-        │   ├── common               # SetPackStatus helper
+        │   ├── common               # Shared variables and SetPackStatus helper
         │   ├── postinst             # Sets pack status to up_to_date
+        │   ├── preuninst            # Saves pack INFO for post-uninstall cleanup
+        │   ├── postuninst           # Cleans up status conf and download cache
         │   ├── start-stop-status    # Always reports running
         │   └── ...
         └── package/
@@ -234,6 +237,7 @@ Building locally from source avoids both issues. The build script automates the 
 
 - Package version `99.0.0` ensures Package Center treats it as newer than any official release
 - Both packages use `startable="no"` since they provide files only (no daemon)
+- Both packages use `silent_install/upgrade/uninstall="yes"` matching official behavior
 - Both packages declare `run-as: package` privilege
 - The aarch64 SPK covers all ARM64 Synology platforms (rtd1296, rtd1619b, armada37xx) — the `libsynoame-license.so` is identical across all three
 - The SPK decryption keys are public knowledge, extracted from `libsynocodesign.so` by the [SynoXtract](https://github.com/prt1999/SynoXtract) and [synodecrypt](https://github.com/synacktiv/synodecrypt) projects

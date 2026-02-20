@@ -1,2 +1,17 @@
 #!/bin/sh
+
+source "$(dirname $0)"/common
+
+if [ -f ${PACK_STATUS_CONF} ]; then
+  rm -f ${PACK_STATUS_CONF}
+fi
+
+if [ -d ${PACK_DOWNLOAD_PATH} ]; then
+  rm -r ${PACK_DOWNLOAD_PATH}
+fi
+
+if [ -f ${CODEC_PACK_UNINSTALL_INFO} ]; then
+  rm -f ${CODEC_PACK_UNINSTALL_INFO}
+fi
+
 exit 0

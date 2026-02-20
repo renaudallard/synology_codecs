@@ -3,7 +3,10 @@
 PKG_NAME="${SYNOPKG_PKGNAME:-SurveillanceVideoExtension}"
 PKG_PATH="/var/packages/SurveillanceVideoExtension"
 PKG_VAR_PATH="${PKG_PATH}/var"
+PACK_DOWNLOAD_PATH="${PKG_VAR_PATH}/pack_download"
 PACK_STATUS_CONF="${PKG_VAR_PATH}/pack_status.conf"
+CODEC_PACK_INFO=${PKG_PATH}"/target/pack/INFO"
+CODEC_PACK_UNINSTALL_INFO="/tmp/svsext_uninst_pack_info"
 
 SetPackStatus() {
   status=$1

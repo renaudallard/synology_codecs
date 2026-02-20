@@ -1,2 +1,9 @@
 #!/bin/sh
+
+source "$(dirname $0)"/common
+
+if [ -f ${CODEC_PACK_INFO} ]; then
+  cp -af ${CODEC_PACK_INFO} ${CODEC_PACK_UNINSTALL_INFO}
+fi
+
 exit 0
