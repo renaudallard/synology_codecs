@@ -1,0 +1,10 @@
+build/
+out/
+*.spk
+
+# Build artifacts placed into src/ by build.sh
+src/codecpack/package/pack/bin/ffmpeg41
+src/codecpack/package/pack/bin/ffprobe
+src/codecpack/package/usr/lib/libsynoame-license.so
+src/sve/package/bin/ffmpeg
+src/sve/package/bin/ffprobe

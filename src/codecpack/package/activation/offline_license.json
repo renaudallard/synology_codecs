@@ -1,0 +1,4 @@
+[
+  {"attribute":{"codec":"hevc","type":"free"},"status":"valid","expireTime":0,"appName":"ame","duration":1576800000,"appType":14,"licenseContent":1,"registered_at":1700000000,"server_time":1700000000,"firstActTime":1700000000,"licenseCode":"0"},
+  {"attribute":{"codec":"aac","type":"free"},"status":"valid","expireTime":0,"appName":"ame","duration":1576800000,"appType":14,"licenseContent":1,"registered_at":1700000000,"server_time":1700000000,"firstActTime":1700000000,"licenseCode":"0"}
+]

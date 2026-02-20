@@ -1,0 +1,6 @@
+{
+  "usr-local-linker": {
+    "lib": ["lib/libsynoame-license.so"],
+    "bin": ["bin/ffmpeg41", "bin/ffprobe"]
+  }
+}
