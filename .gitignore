@@ -1,5 +1,6 @@
 build/
 out/
+backup/
 *.spk
 
 # Build artifacts placed into src/ by build.sh
