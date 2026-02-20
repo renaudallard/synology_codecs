@@ -159,9 +159,9 @@ cp CodecPack-rtd1296-3.1.0-3005.spk build/cache/
 ## Install
 
 1. Open **Package Center** on your NAS
-2. **Uninstall** the official *Advanced Media Extensions* and *Surveillance Video Extension* if present
+2. **Uninstall** the official *Advanced Media Extensions* if present
 3. Click **Manual Install** and select the `CodecPack` SPK matching your NAS architecture
-4. Repeat for the `SurveillanceVideoExtension` SPK
+4. If you use Surveillance Station, install the `SurveillanceVideoExtension` SPK the same way — it will replace the official one in place (you cannot uninstall the official Surveillance Video Extension without removing Surveillance Station first)
 5. If the installer cannot write activation files, it will print a one-line `sudo` command to run via SSH
 
 ## Verify
