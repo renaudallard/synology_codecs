@@ -1,0 +1,13 @@
+#!/bin/sh
+
+PKG_NAME="${SYNOPKG_PKGNAME:-SurveillanceVideoExtension}"
+PKG_PATH="/var/packages/SurveillanceVideoExtension"
+PKG_VAR_PATH="${PKG_PATH}/var"
+PACK_STATUS_CONF="${PKG_VAR_PATH}/pack_status.conf"
+
+SetPackStatus() {
+  status=$1
+  echo "{\"status\": \"$status\"}" > ${PACK_STATUS_CONF}
+  chmod 644 ${PACK_STATUS_CONF}
+  chown ${PKG_NAME}:${PKG_NAME} ${PACK_STATUS_CONF}
+}

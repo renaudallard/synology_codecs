@@ -1,2 +1,7 @@
 #!/bin/sh
+
+source "$(dirname $0)"/common
+
+SetPackStatus up_to_date
+
 exit 0

@@ -173,7 +173,7 @@ SSH into the NAS and check that HEVC is available:
 /var/packages/CodecPack/target/bin/ffmpeg41 -encoders 2>/dev/null | grep hevc
 
 # SVE — should show libx265
-/var/packages/SurveillanceVideoExtension/target/bin/ffmpeg -encoders 2>/dev/null | grep hevc
+/var/packages/SurveillanceVideoExtension/target/pack/lib/ffmpeg33-for-surveillance/ffmpeg -encoders 2>/dev/null | grep hevc
 ```
 
 Then test with your apps:
@@ -204,13 +204,17 @@ Then test with your apps:
     └── sve/                         # SurveillanceVideoExtension SPK sources
         ├── INFO
         ├── conf/
-        │   ├── privilege
-        │   └── resource
+        │   ├── privilege            # Run-as config (scripts run as root)
+        │   └── resource             # Package resource config
         ├── scripts/
-        │   ├── start-stop-status
+        │   ├── common               # SetPackStatus helper
+        │   ├── postinst             # Sets pack status to up_to_date
+        │   ├── start-stop-status    # Always reports running
         │   └── ...
         └── package/
-            └── bin/                 # ffmpeg, ffprobe (placed by build)
+            ├── bin/                 # synocodectool (stub)
+            ├── pack/                # HAS_H264 marker, INFO, ffmpeg (placed by build)
+            └── lib/                 # symlink to pack/lib/ffmpeg33-for-surveillance
 ```
 
 ## Why no pre-built downloads?

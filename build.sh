@@ -642,9 +642,16 @@ build_sve() {
 
     # Copy package tree to staging, then overlay built binaries
     cp -a "$pkg_src/package/"* "$staging/package/"
-    cp "$ARCH_BUILD_DIR/ffmpeg"  "$staging/package/bin/ffmpeg"
-    cp "$ARCH_BUILD_DIR/ffprobe" "$staging/package/bin/ffprobe"
-    chmod +x "$staging/package/bin/ffmpeg" "$staging/package/bin/ffprobe"
+    chmod +x "$staging/package/bin/synocodectool"
+    # SS loads ffmpeg shared libs from lib/ffmpeg33-for-surveillance/ which
+    # we symlink to pack/lib/ffmpeg33-for-surveillance/.  Our static ffmpeg
+    # doesn't produce .so files, so place the full static binary there as
+    # a wrapper that SS can exec instead.
+    cp "$ARCH_BUILD_DIR/ffmpeg" "$staging/package/pack/lib/ffmpeg33-for-surveillance/ffmpeg"
+    chmod +x "$staging/package/pack/lib/ffmpeg33-for-surveillance/ffmpeg"
+    ln -sf ../pack/lib/ffmpeg33-for-surveillance "$staging/package/lib/ffmpeg33-for-surveillance"
+    # Also update pack/INFO arch to match target
+    sed -i "s/^arch=.*/arch=\"${INFO_ARCH}\"/" "$staging/package/pack/INFO"
 
     tar czf "$staging/package.tgz" -C "$staging/package" .
     rm -rf "$staging/package"

@@ -9,7 +9,23 @@
             "run-as": "root"
         },
         {
+            "action": "preinst",
+            "run-as": "root"
+        },
+        {
             "action": "postinst",
+            "run-as": "root"
+        },
+        {
+            "action": "preuninst",
+            "run-as": "root"
+        },
+        {
+            "action": "preupgrade",
+            "run-as": "root"
+        },
+        {
+            "action": "postuninst",
             "run-as": "root"
         }
     ],

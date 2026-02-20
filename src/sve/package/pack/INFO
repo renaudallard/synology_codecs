@@ -1,0 +1,8 @@
+package="SurveillanceVideoExtension_H264"
+version="1.0.0-0001"
+maintainer="community"
+arch="x86_64"
+firmware="1.0.0-0001"
+os_min_ver="1.0.0-0001"
+description="SurveillanceVideoExtension_H264"
+displayname="SurveillanceVideoExtension_H264"
