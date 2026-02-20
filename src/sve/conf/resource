@@ -1,5 +1,2 @@
 {
-  "usr-local-linker": {
-    "bin": ["bin/ffmpeg", "bin/ffprobe"]
-  }
 }

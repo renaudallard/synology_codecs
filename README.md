@@ -170,7 +170,7 @@ SSH into the NAS and check that HEVC is available:
 
 ```sh
 # CodecPack — should show libx265
-/var/packages/CodecPack/target/pack/bin/ffmpeg41 -encoders 2>/dev/null | grep hevc
+/var/packages/CodecPack/target/bin/ffmpeg41 -encoders 2>/dev/null | grep hevc
 
 # SVE — should show libx265
 /var/packages/SurveillanceVideoExtension/target/bin/ffmpeg -encoders 2>/dev/null | grep hevc
@@ -190,15 +190,15 @@ Then test with your apps:
     ├── codecpack/                   # CodecPack SPK sources
     │   ├── INFO                     # Package metadata (arch set at build time)
     │   ├── conf/
-    │   │   ├── privilege            # Run-as config
-    │   │   └── resource             # usr-local-linker paths
+    │   │   ├── privilege            # Run-as config (scripts run as root)
+    │   │   └── resource             # Package resource config
     │   ├── scripts/
-    │   │   ├── postinst             # Copies activation files
+    │   │   ├── postinst             # Copies activation files, sets pack status
     │   │   ├── start-stop-status    # Always reports running
     │   │   └── ...                  # Other lifecycle scripts (exit 0)
     │   └── package/
     │       ├── activation/          # activation.conf, offline_license.json
-    │       ├── pack/bin/            # ffmpeg41, ffprobe (placed by build)
+    │       ├── bin/                 # ffmpeg41, ffprobe, ffmpeg33-for-* (placed by build)
     │       ├── usr/bin/             # synoame-bin-check-license (stub)
     │       └── usr/lib/             # patched .so (placed by build)
     └── sve/                         # SurveillanceVideoExtension SPK sources

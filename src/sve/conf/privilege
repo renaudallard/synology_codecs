@@ -1,1 +1,19 @@
-{"defaults":{"run-as":"package"}}
+{
+    "ctrl-script": [
+        {
+            "action": "start",
+            "run-as": "root"
+        },
+        {
+            "action": "stop",
+            "run-as": "root"
+        },
+        {
+            "action": "postinst",
+            "run-as": "root"
+        }
+    ],
+    "defaults": {
+        "run-as": "package"
+    }
+}

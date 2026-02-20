@@ -1,20 +1,25 @@
 #!/bin/sh
 
 SYNOPKG_PKGDEST="${SYNOPKG_PKGDEST:-/var/packages/CodecPack/target}"
-ACT_DIR="/var/packages/CodecPack/etc/activation"
+PKG_PATH="/var/packages/CodecPack"
+ACT_DIR="${PKG_PATH}/etc/activation"
+VAR_DIR="${PKG_PATH}/var"
 
-# Try to install activation files
-install_activation() {
-    mkdir -p "$ACT_DIR" 2>/dev/null
-    if [ -d "$ACT_DIR" ]; then
-        cp "$SYNOPKG_PKGDEST/activation/activation.conf" "$ACT_DIR/" 2>/dev/null
-        cp "$SYNOPKG_PKGDEST/activation/offline_license.json" "$ACT_DIR/" 2>/dev/null
-        echo "Activation files installed to $ACT_DIR"
-    else
-        echo "Could not create $ACT_DIR — run manually:"
-        echo "  sudo mkdir -p $ACT_DIR && sudo cp $SYNOPKG_PKGDEST/activation/* $ACT_DIR/"
-    fi
-}
+# Install activation files
+mkdir -p "$ACT_DIR" 2>/dev/null
+if [ -d "$ACT_DIR" ]; then
+    cp "$SYNOPKG_PKGDEST/activation/activation.conf" "$ACT_DIR/" 2>/dev/null
+    cp "$SYNOPKG_PKGDEST/activation/offline_license.json" "$ACT_DIR/" 2>/dev/null
+    echo "Activation files installed to $ACT_DIR"
+else
+    echo "Could not create $ACT_DIR — run manually:"
+    echo "  sudo mkdir -p $ACT_DIR && sudo cp $SYNOPKG_PKGDEST/activation/* $ACT_DIR/"
+fi
 
-install_activation
+# Set codec pack status to installed
+mkdir -p "$VAR_DIR" 2>/dev/null
+echo '{"status": "installed"}' > "${VAR_DIR}/pack_status.conf" 2>/dev/null
+chmod 644 "${VAR_DIR}/pack_status.conf" 2>/dev/null
+chown CodecPack:CodecPack "${VAR_DIR}/pack_status.conf" 2>/dev/null
+
 exit 0

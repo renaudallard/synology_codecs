@@ -601,10 +601,13 @@ build_codecpack() {
 
     # Copy package tree to staging, then overlay built binaries
     cp -a "$pkg_src/package/"* "$staging/package/"
-    cp "$ARCH_BUILD_DIR/ffmpeg"  "$staging/package/pack/bin/ffmpeg41"
-    cp "$ARCH_BUILD_DIR/ffprobe" "$staging/package/pack/bin/ffprobe"
+    cp "$ARCH_BUILD_DIR/ffmpeg"  "$staging/package/bin/ffmpeg41"
+    cp "$ARCH_BUILD_DIR/ffprobe" "$staging/package/bin/ffprobe"
+    # SS uses ffmpeg33-for-surveillance; audio apps use ffmpeg33-for-audio
+    ln -sf ffmpeg41 "$staging/package/bin/ffmpeg33-for-surveillance"
+    ln -sf ffmpeg41 "$staging/package/bin/ffmpeg33-for-audio"
     cp "$ARCH_BUILD_DIR/libsynoame-license.so" "$staging/package/usr/lib/libsynoame-license.so"
-    chmod +x "$staging/package/pack/bin/ffmpeg41" "$staging/package/pack/bin/ffprobe"
+    chmod +x "$staging/package/bin/ffmpeg41" "$staging/package/bin/ffprobe"
     chmod +x "$staging/package/usr/bin/synoame-bin-check-license"
 
     tar czf "$staging/package.tgz" -C "$staging/package" .
