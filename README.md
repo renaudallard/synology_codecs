@@ -15,7 +15,20 @@ Synology silently removed HEVC/AVC decoding and encoding from AME 4.0. The offic
 
 ## How it works
 
-**Static FFmpeg** — Each package ships [John Van Sickle's](https://johnvansickle.com/ffmpeg/) static FFmpeg build for amd64, which includes libx265, libx264, and AAC encoders/decoders out of the box.
+**FFmpeg built from source** — The build script cross-compiles FFmpeg 7.1 and all codec libraries from their official upstream repositories as a fully static x86_64 binary. No pre-built third-party binaries are used.
+
+Included codecs:
+
+| Library | Version | Codec |
+|---------|---------|-------|
+| [x264](https://code.videolan.org/videolan/x264) | stable | H.264 video |
+| [x265](https://bitbucket.org/multicoreware/x265_git) | 4.1 | H.265/HEVC video |
+| [fdk-aac](https://github.com/mstorsjo/fdk-aac) | 2.0.3 | AAC audio |
+| [libvpx](https://chromium.googlesource.com/webm/libvpx) | 1.16.0 | VP8/VP9 video |
+| [opus](https://github.com/xiph/opus) | 1.6 | Opus audio |
+| [lame](https://lame.sourceforge.io) | 3.100 | MP3 audio |
+| [libaom](https://aomedia.googlesource.com/aom) | 3.13.1 | AV1 video |
+| [libvorbis](https://github.com/xiph/vorbis) | 1.3.7 | Vorbis audio |
 
 **License library patch** — The build script downloads the official AME 3.1.0-3005 SPK, decrypts it (Synology uses an XChaCha20-Poly1305 encrypted archive format), extracts `libsynoame-license.so`, and patches five license-check functions to unconditionally return true:
 
@@ -38,12 +51,16 @@ Each patch writes `B8 01 00 00 00 C3` immediately after the `endbr64` instructio
 - **DSM 7.0** or later
 
 **Build host:**
-- `bash`, `curl`, `tar`, `xz`, `python3`
-- Python packages: `pysodium`, `msgpack` (used to decrypt the Synology SPK archive)
-
-```sh
-pip3 install pysodium msgpack
-```
+- `bash`, `curl`, `tar`, `xz`, `git`, `make`, `cmake`, `python3`
+- Cross-compilation toolchain (if not building on x86_64):
+  ```sh
+  sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu
+  ```
+- `autoconf`, `automake`, `libtool` (for codec library builds)
+- Python packages for SPK decryption:
+  ```sh
+  pip3 install pysodium msgpack
+  ```
 
 ## Build
 
@@ -58,10 +75,10 @@ The script will:
 1. Download AME 3.1.0-3005 from the Synology CDN
 2. Decrypt the encrypted SPK and extract `libsynoame-license.so`
 3. Apply the five binary patches (with MD5 verification before and after)
-4. Download the latest static FFmpeg release for amd64
+4. Clone and cross-compile all codec libraries and FFmpeg from source as a static x86_64 binary
 5. Package everything into two SPK files in `out/`
 
-Downloads are cached in `build/cache/` so subsequent builds skip the download step.
+Source repos and downloads are cached in `build/cache/` so subsequent builds are fast.
 
 ## Install
 
@@ -126,7 +143,8 @@ Then test with your apps:
 - The `start-stop-status` script always reports the package as running (there is no daemon)
 - Both packages declare `run-as: package` privilege
 - The SPK decryption keys are public knowledge, extracted from `libsynocodesign.so` by the [SynoXtract](https://github.com/prt1999/SynoXtract) and [synodecrypt](https://github.com/synacktiv/synodecrypt) projects
+- FFmpeg and all codec libraries are compiled from source — no pre-built third-party binaries are trusted
 
 ## License
 
-This project is provided as-is for personal use. FFmpeg is licensed under LGPL/GPL. The patched Synology library remains the property of Synology Inc.
+This project is provided as-is for personal use. FFmpeg is licensed under LGPL/GPL (this build uses GPL due to x264/x265). fdk-aac is under a Fraunhofer FDK AAC license. The patched Synology library remains the property of Synology Inc.

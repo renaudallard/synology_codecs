@@ -5,11 +5,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_DIR="$SCRIPT_DIR/src"
 BUILD_DIR="$SCRIPT_DIR/build"
 CACHE_DIR="$SCRIPT_DIR/build/cache"
+FF_SRC="$BUILD_DIR/ffmpeg-src"
+FF_PREFIX="$BUILD_DIR/ffmpeg-prefix"
 OUT_DIR="$SCRIPT_DIR/out"
+
+NJOBS=$(nproc)
 
 AME_VER="3.1.0-3005"
 AME_URL="https://global.synologydownload.com/download/Package/spk/CodecPack/${AME_VER}/CodecPack-x86_64-${AME_VER}.spk"
-FFMPEG_URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
 
 ORIG_SO_MD5="09e3adeafe85b353c9427d93ef0185e9"
 PATCHED_SO_MD5="86d5f9f93c80c35e6c59f8ab05da3dc2"
@@ -22,21 +25,30 @@ PKG_VER="99.0.0-0001"
 SPK_SIGNING_KEY="FECAA2DD065A86A68E5FE86BA34CD8481590A79FA2C29A7D69F25A3B3BFAA19E"
 SPK_MASTER_KEY="CF0D8D6ECB95EF97D0AC6A7021D99124C699808CF2CC5157DFEA5EBF15C805E7"
 
+# Cross-compilation target
+CROSS_HOST="x86_64-linux-gnu"
+CROSS_PREFIX="${CROSS_HOST}-"
+
 # ── helpers ────────────────────────────────────────────────────────────
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
 
 check_deps() {
     local missing=()
-    for cmd in tar curl xz python3; do
+    for cmd in tar curl xz python3 make git cmake; do
         command -v "$cmd" >/dev/null || missing+=("$cmd")
     done
     if [ ${#missing[@]} -gt 0 ]; then
         die "Missing required tools: ${missing[*]}"
     fi
-    # Check python modules needed for SPK decryption
     python3 -c "import pysodium, msgpack" 2>/dev/null || \
         die "Missing Python modules. Install with: pip3 install pysodium msgpack"
+
+    # Check cross toolchain
+    if [ "$(uname -m)" != "x86_64" ]; then
+        command -v "${CROSS_PREFIX}gcc" >/dev/null || \
+            die "Cross compiler not found. Install with: sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu"
+    fi
 }
 
 # Generate a solid-color PNG using only python3 + zlib (no PIL)
@@ -156,6 +168,42 @@ print(f"Decrypted: {out_tar}")
 PYEOF
 }
 
+# Clone or update a git repo into cache
+git_clone() {
+    local url=$1 dir=$2 ref=$3
+    if [ -d "$CACHE_DIR/$dir" ]; then
+        info "  $dir already cached"
+    else
+        git clone --depth 1 --branch "$ref" "$url" "$CACHE_DIR/$dir"
+    fi
+}
+
+# ── cross-compile helpers ─────────────────────────────────────────────
+setup_cross_env() {
+    # Use system pkg-config (avoid user stubs)
+    PKG_CONFIG="$(command -v /usr/bin/pkg-config || command -v pkg-config)"
+    export PKG_CONFIG
+
+    if [ "$(uname -m)" = "x86_64" ]; then
+        # Native build
+        export CC=gcc CXX=g++ AR=ar RANLIB=ranlib STRIP=strip
+        CONFIGURE_HOST=""
+        CMAKE_CROSS_ARGS=""
+    else
+        export CC="${CROSS_PREFIX}gcc"
+        export CXX="${CROSS_PREFIX}g++"
+        export AR="${CROSS_PREFIX}ar"
+        export RANLIB="${CROSS_PREFIX}ranlib"
+        export STRIP="${CROSS_PREFIX}strip"
+        CONFIGURE_HOST="--host=${CROSS_HOST}"
+        CMAKE_CROSS_ARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=x86_64 -DCMAKE_C_COMPILER=${CC} -DCMAKE_CXX_COMPILER=${CXX}"
+    fi
+    export PKG_CONFIG_PATH="$FF_PREFIX/lib/pkgconfig"
+    export CFLAGS="-I$FF_PREFIX/include"
+    export CXXFLAGS="-I$FF_PREFIX/include"
+    export LDFLAGS="-L$FF_PREFIX/lib"
+}
+
 # ── step 1: download & extract AME ────────────────────────────────────
 download_ame() {
     local ame_spk="$CACHE_DIR/ame.spk"
@@ -191,7 +239,6 @@ download_ame() {
     cp "$so_file" "$BUILD_DIR/libsynoame-license.so"
     rm -rf "$ame_tmp" "$ame_tar"
 
-    # Verify original checksum
     local actual_md5
     actual_md5=$(md5sum "$BUILD_DIR/libsynoame-license.so" | awk '{print $1}')
     if [ "$actual_md5" != "$ORIG_SO_MD5" ]; then
@@ -222,7 +269,6 @@ patch_so() {
     # SLIsXA @ 0xbe74
     patch_bytes "$so" be74 B8 01 00 00 00 C3
 
-    # Verify patched checksum
     local actual_md5
     actual_md5=$(md5sum "$so" | awk '{print $1}')
     if [ "$actual_md5" != "$PATCHED_SO_MD5" ]; then
@@ -231,33 +277,265 @@ patch_so() {
     info "Patched .so MD5 verified: $actual_md5"
 }
 
-# ── step 3: download static ffmpeg ────────────────────────────────────
-download_ffmpeg() {
-    local ffmpeg_tar="$CACHE_DIR/ffmpeg-static.tar.xz"
-    if [ ! -f "$ffmpeg_tar" ]; then
-        info "Downloading static FFmpeg (amd64)..."
-        curl -fSL -o "$ffmpeg_tar" "$FFMPEG_URL"
-    else
-        info "FFmpeg archive already cached"
+# ── step 3: build FFmpeg from source ──────────────────────────────────
+
+fetch_sources() {
+    info "Fetching library sources..."
+    mkdir -p "$CACHE_DIR"
+
+    git_clone "https://code.videolan.org/videolan/x264.git"         x264     stable
+    git_clone "https://bitbucket.org/multicoreware/x265_git.git"    x265     4.1
+    git_clone "https://github.com/mstorsjo/fdk-aac.git"            fdk-aac  v2.0.3
+    git_clone "https://chromium.googlesource.com/webm/libvpx.git"  libvpx   v1.16.0
+    git_clone "https://github.com/xiph/opus.git"                   opus     v1.6
+    git_clone "https://github.com/xiph/ogg.git"                    ogg      v1.3.6
+    git_clone "https://github.com/xiph/vorbis.git"                 vorbis   v1.3.7
+    git_clone "https://aomedia.googlesource.com/aom"               aom      v3.13.1
+    git_clone "https://github.com/FFmpeg/FFmpeg.git"               ffmpeg   n7.1.3
+
+    # LAME has no git — download tarball
+    if [ ! -f "$CACHE_DIR/lame-3.100.tar.gz" ]; then
+        curl -fSL -o "$CACHE_DIR/lame-3.100.tar.gz" \
+            "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz"
+    fi
+}
+
+build_nasm() {
+    # nasm is needed by x264/x265/ffmpeg for x86 asm optimizations
+    if [ -x "$FF_PREFIX/bin/nasm" ]; then return; fi
+    info "Building nasm..."
+    local ver="2.16.03"
+    if [ ! -f "$CACHE_DIR/nasm-${ver}.tar.xz" ]; then
+        curl -fSL -o "$CACHE_DIR/nasm-${ver}.tar.xz" \
+            "https://www.nasm.us/pub/nasm/releasebuilds/${ver}/nasm-${ver}.tar.xz"
+    fi
+    rm -rf "$FF_SRC/nasm"
+    mkdir -p "$FF_SRC/nasm"
+    tar xJf "$CACHE_DIR/nasm-${ver}.tar.xz" -C "$FF_SRC/nasm" --strip-components=1
+    cd "$FF_SRC/nasm"
+    # nasm is a build tool — always compile for HOST architecture
+    CC=gcc CXX=g++ CFLAGS="" CXXFLAGS="" LDFLAGS="" \
+        ./configure --prefix="$FF_PREFIX"
+    make -j"$NJOBS"
+    make install
+}
+
+build_x264() {
+    if [ -f "$FF_PREFIX/lib/libx264.a" ]; then return; fi
+    info "Building x264..."
+    rm -rf "$FF_SRC/x264"
+    cp -a "$CACHE_DIR/x264" "$FF_SRC/x264"
+    cd "$FF_SRC/x264"
+    ./configure \
+        --prefix="$FF_PREFIX" \
+        --enable-static --disable-shared \
+        --disable-cli \
+        --cross-prefix="${CROSS_PREFIX}" \
+        --host="${CROSS_HOST}" \
+        --extra-cflags="$CFLAGS" \
+        --extra-ldflags="$LDFLAGS"
+    make -j"$NJOBS"
+    make install
+}
+
+build_x265() {
+    if [ -f "$FF_PREFIX/lib/libx265.a" ]; then return; fi
+    info "Building x265..."
+    rm -rf "$FF_SRC/x265"
+    cp -a "$CACHE_DIR/x265" "$FF_SRC/x265"
+    cd "$FF_SRC/x265/source"
+    # Fix cmake_policy(OLD) calls rejected by CMake 4.x
+    sed -i 's/cmake_policy(SET CMP0025 OLD)/cmake_policy(SET CMP0025 NEW)/' CMakeLists.txt
+    sed -i 's/cmake_policy(SET CMP0054 OLD)/cmake_policy(SET CMP0054 NEW)/' CMakeLists.txt
+    sed -i 's/cmake_minimum_required (VERSION 2.8.8)/cmake_minimum_required(VERSION 3.10)/' CMakeLists.txt
+    cmake -B build -G "Unix Makefiles" \
+        -DCMAKE_INSTALL_PREFIX="$FF_PREFIX" \
+        -DENABLE_SHARED=OFF \
+        -DENABLE_CLI=OFF \
+        $CMAKE_CROSS_ARGS
+    cmake --build build -j"$NJOBS"
+    cmake --install build
+    # Fix x265.pc: remove -lgcc_s which has no static version
+    sed -i 's/-lgcc_s //g' "$FF_PREFIX/lib/pkgconfig/x265.pc"
+}
+
+build_fdk_aac() {
+    if [ -f "$FF_PREFIX/lib/libfdk-aac.a" ]; then return; fi
+    info "Building fdk-aac..."
+    rm -rf "$FF_SRC/fdk-aac"
+    cp -a "$CACHE_DIR/fdk-aac" "$FF_SRC/fdk-aac"
+    cd "$FF_SRC/fdk-aac"
+    autoreconf -fiv
+    ./configure \
+        --prefix="$FF_PREFIX" \
+        --enable-static --disable-shared \
+        $CONFIGURE_HOST
+    make -j"$NJOBS"
+    make install
+}
+
+build_libvpx() {
+    if [ -f "$FF_PREFIX/lib/libvpx.a" ]; then return; fi
+    info "Building libvpx..."
+    rm -rf "$FF_SRC/libvpx"
+    cp -a "$CACHE_DIR/libvpx" "$FF_SRC/libvpx"
+    cd "$FF_SRC/libvpx"
+    CROSS="${CROSS_PREFIX}" ./configure \
+        --prefix="$FF_PREFIX" \
+        --target=x86_64-linux-gcc \
+        --enable-static --disable-shared \
+        --disable-examples --disable-tools --disable-docs \
+        --disable-unit-tests \
+        --enable-vp8 --enable-vp9 \
+        --enable-vp9-highbitdepth
+    make -j"$NJOBS"
+    make install
+}
+
+build_opus() {
+    if [ -f "$FF_PREFIX/lib/libopus.a" ]; then return; fi
+    info "Building opus..."
+    rm -rf "$FF_SRC/opus"
+    cp -a "$CACHE_DIR/opus" "$FF_SRC/opus"
+    cd "$FF_SRC/opus"
+    autoreconf -fiv
+    ./configure \
+        --prefix="$FF_PREFIX" \
+        --enable-static --disable-shared --disable-doc \
+        $CONFIGURE_HOST
+    make -j"$NJOBS"
+    make install
+}
+
+build_lame() {
+    if [ -f "$FF_PREFIX/lib/libmp3lame.a" ]; then return; fi
+    info "Building lame..."
+    rm -rf "$FF_SRC/lame"
+    mkdir -p "$FF_SRC/lame"
+    tar xzf "$CACHE_DIR/lame-3.100.tar.gz" -C "$FF_SRC/lame" --strip-components=1
+    cd "$FF_SRC/lame"
+    ./configure \
+        --prefix="$FF_PREFIX" \
+        --enable-static --disable-shared \
+        --disable-frontend --disable-decoder \
+        $CONFIGURE_HOST
+    make -j"$NJOBS"
+    make install
+}
+
+build_ogg() {
+    if [ -f "$FF_PREFIX/lib/libogg.a" ]; then return; fi
+    info "Building libogg..."
+    rm -rf "$FF_SRC/ogg"
+    cp -a "$CACHE_DIR/ogg" "$FF_SRC/ogg"
+    cd "$FF_SRC/ogg"
+    autoreconf -fiv
+    ./configure \
+        --prefix="$FF_PREFIX" \
+        --enable-static --disable-shared \
+        $CONFIGURE_HOST
+    make -j"$NJOBS"
+    make install
+}
+
+build_vorbis() {
+    if [ -f "$FF_PREFIX/lib/libvorbis.a" ]; then return; fi
+    info "Building libvorbis..."
+    rm -rf "$FF_SRC/vorbis"
+    cp -a "$CACHE_DIR/vorbis" "$FF_SRC/vorbis"
+    cd "$FF_SRC/vorbis"
+    autoreconf -fiv
+    ./configure \
+        --prefix="$FF_PREFIX" \
+        --enable-static --disable-shared \
+        --with-ogg="$FF_PREFIX" \
+        $CONFIGURE_HOST
+    make -j"$NJOBS"
+    make install
+}
+
+build_aom() {
+    if [ -f "$FF_PREFIX/lib/libaom.a" ]; then return; fi
+    info "Building libaom..."
+    rm -rf "$FF_SRC/aom"
+    cp -a "$CACHE_DIR/aom" "$FF_SRC/aom"
+    cd "$FF_SRC/aom"
+    cmake -B build -G "Unix Makefiles" \
+        -DCMAKE_INSTALL_PREFIX="$FF_PREFIX" \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DENABLE_DOCS=OFF \
+        -DENABLE_EXAMPLES=OFF \
+        -DENABLE_TOOLS=OFF \
+        -DENABLE_TESTS=OFF \
+        -DCONFIG_MULTITHREAD=1 \
+        $CMAKE_CROSS_ARGS
+    cmake --build build -j"$NJOBS"
+    cmake --install build
+}
+
+build_ffmpeg() {
+    if [ -f "$BUILD_DIR/ffmpeg" ] && [ -f "$BUILD_DIR/ffprobe" ]; then
+        info "FFmpeg already built"
+        return
+    fi
+    info "Building FFmpeg..."
+    rm -rf "$FF_SRC/ffmpeg"
+    cp -a "$CACHE_DIR/ffmpeg" "$FF_SRC/ffmpeg"
+    cd "$FF_SRC/ffmpeg"
+
+    local cross_args=""
+    if [ "$(uname -m)" != "x86_64" ]; then
+        cross_args="--enable-cross-compile --cross-prefix=${CROSS_PREFIX} --arch=x86_64 --target-os=linux"
     fi
 
-    info "Extracting ffmpeg and ffprobe..."
-    local ff_tmp="$BUILD_DIR/ff_tmp"
-    mkdir -p "$ff_tmp"
-    tar xJf "$ffmpeg_tar" -C "$ff_tmp"
+    PKG_CONFIG_PATH="$FF_PREFIX/lib/pkgconfig" ./configure \
+        --prefix="$FF_PREFIX" \
+        --extra-cflags="-I$FF_PREFIX/include -static" \
+        --extra-ldflags="-L$FF_PREFIX/lib -static" \
+        --extra-libs="-lpthread -lm -lstdc++" \
+        --pkg-config="$PKG_CONFIG" \
+        --pkg-config-flags="--static" \
+        --enable-gpl \
+        --enable-nonfree \
+        --enable-static \
+        --disable-shared \
+        --enable-libx264 \
+        --enable-libx265 \
+        --enable-libfdk-aac \
+        --enable-libvpx \
+        --enable-libopus \
+        --enable-libmp3lame \
+        --enable-libvorbis \
+        --enable-libaom \
+        $cross_args
 
-    local ffmpeg_bin
-    ffmpeg_bin=$(find "$ff_tmp" -name 'ffmpeg' -type f | head -1)
-    local ffprobe_bin
-    ffprobe_bin=$(find "$ff_tmp" -name 'ffprobe' -type f | head -1)
-    [ -n "$ffmpeg_bin" ]  || die "ffmpeg binary not found in archive"
-    [ -n "$ffprobe_bin" ] || die "ffprobe binary not found in archive"
+    make -j"$NJOBS"
 
-    cp "$ffmpeg_bin"  "$BUILD_DIR/ffmpeg"
-    cp "$ffprobe_bin" "$BUILD_DIR/ffprobe"
+    cp ffmpeg  "$BUILD_DIR/ffmpeg"
+    cp ffprobe "$BUILD_DIR/ffprobe"
+    $STRIP "$BUILD_DIR/ffmpeg" "$BUILD_DIR/ffprobe"
     chmod +x "$BUILD_DIR/ffmpeg" "$BUILD_DIR/ffprobe"
-    rm -rf "$ff_tmp"
-    info "FFmpeg binaries extracted"
+    info "FFmpeg built and stripped"
+}
+
+build_all_ffmpeg() {
+    setup_cross_env
+    export PATH="$FF_PREFIX/bin:$PATH"
+    mkdir -p "$FF_SRC" "$FF_PREFIX"
+
+    fetch_sources
+    build_nasm
+    build_x264
+    build_x265
+    build_fdk_aac
+    build_libvpx
+    build_opus
+    build_lame
+    build_ogg
+    build_vorbis
+    build_aom
+    build_ffmpeg
 }
 
 # ── step 4: generate icons ────────────────────────────────────────────
@@ -275,7 +553,6 @@ build_codecpack() {
     rm -rf "$staging"
     mkdir -p "$staging"
 
-    # Place binaries and patched .so into package tree
     cp "$BUILD_DIR/ffmpeg"  "$pkg_src/package/pack/bin/ffmpeg41"
     cp "$BUILD_DIR/ffprobe" "$pkg_src/package/pack/bin/ffprobe"
     cp "$BUILD_DIR/libsynoame-license.so" "$pkg_src/package/usr/lib/libsynoame-license.so"
@@ -283,23 +560,18 @@ build_codecpack() {
     chmod +x "$pkg_src/package/pack/bin/ffprobe"
     chmod +x "$pkg_src/package/usr/bin/synoame-bin-check-license"
 
-    # Create package.tgz
     tar czf "$staging/package.tgz" -C "$pkg_src/package" .
 
-    # Copy metadata files
     cp "$pkg_src/INFO" "$staging/INFO"
     cp "$BUILD_DIR/PACKAGE_ICON.PNG" "$staging/PACKAGE_ICON.PNG"
     cp "$BUILD_DIR/PACKAGE_ICON_256.PNG" "$staging/PACKAGE_ICON_256.PNG"
 
-    # Create scripts archive
     chmod +x "$pkg_src/scripts/"*
     tar czf "$staging/scripts.tar.gz" -C "$pkg_src/scripts" .
 
-    # Copy conf
     mkdir -p "$staging/conf"
     cp "$pkg_src/conf/"* "$staging/conf/"
 
-    # Build SPK (tar)
     local spk_name="${CP_PKG}-x86_64-${PKG_VER}.spk"
     tar cf "$OUT_DIR/$spk_name" -C "$staging" .
     info "Built: $OUT_DIR/$spk_name"
@@ -313,29 +585,23 @@ build_sve() {
     rm -rf "$staging"
     mkdir -p "$staging"
 
-    # Place binaries into package tree
     cp "$BUILD_DIR/ffmpeg"  "$pkg_src/package/bin/ffmpeg"
     cp "$BUILD_DIR/ffprobe" "$pkg_src/package/bin/ffprobe"
     chmod +x "$pkg_src/package/bin/ffmpeg"
     chmod +x "$pkg_src/package/bin/ffprobe"
 
-    # Create package.tgz
     tar czf "$staging/package.tgz" -C "$pkg_src/package" .
 
-    # Copy metadata files
     cp "$pkg_src/INFO" "$staging/INFO"
     cp "$BUILD_DIR/PACKAGE_ICON.PNG" "$staging/PACKAGE_ICON.PNG"
     cp "$BUILD_DIR/PACKAGE_ICON_256.PNG" "$staging/PACKAGE_ICON_256.PNG"
 
-    # Create scripts archive
     chmod +x "$pkg_src/scripts/"*
     tar czf "$staging/scripts.tar.gz" -C "$pkg_src/scripts" .
 
-    # Copy conf
     mkdir -p "$staging/conf"
     cp "$pkg_src/conf/"* "$staging/conf/"
 
-    # Build SPK (tar)
     local spk_name="${SVE_PKG}-x86_64-${PKG_VER}.spk"
     tar cf "$OUT_DIR/$spk_name" -C "$staging" .
     info "Built: $OUT_DIR/$spk_name"
@@ -345,14 +611,13 @@ build_sve() {
 main() {
     check_deps
 
-    # Clean working dirs but preserve download cache
-    rm -rf "$BUILD_DIR/ame_tmp" "$BUILD_DIR/ff_tmp" \
+    rm -rf "$BUILD_DIR/ame_tmp" \
            "$BUILD_DIR/codecpack_staging" "$BUILD_DIR/sve_staging"
     mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$OUT_DIR"
 
     download_ame
     patch_so
-    download_ffmpeg
+    build_all_ffmpeg
     generate_icons
     build_codecpack
     build_sve
