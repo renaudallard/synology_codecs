@@ -72,7 +72,7 @@ Both the original and patched checksums are verified during the build.
 ```sh
 sudo apt update
 sudo apt install build-essential git curl xz-utils cmake autoconf automake libtool \
-    python3 python3-pip libsodium-dev
+    python3 python3-pysodium python3-msgpack
 
 # Cross-compilation (optional):
 # Building aarch64 targets on an x86_64 host:
@@ -86,7 +86,7 @@ sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu
 ```sh
 sudo dnf groupinstall "Development Tools"
 sudo dnf install git curl xz cmake autoconf automake libtool \
-    python3 python3-pip libsodium-devel
+    python3 python3-pysodium python3-msgpack
 
 # Cross-compilation (optional, Fedora only):
 sudo dnf install gcc-aarch64-linux-gnu gcc-c++-aarch64-linux-gnu
@@ -96,29 +96,28 @@ sudo dnf install gcc-aarch64-linux-gnu gcc-c++-aarch64-linux-gnu
 
 ```sh
 sudo pacman -S base-devel git curl xz cmake autoconf automake libtool \
-    python python-pip libsodium
+    python python-pysodium python-msgpack
 ```
+
+Note: `python-pysodium` is in the [AUR](https://aur.archlinux.org/packages/python-pysodium), install it with your AUR helper (e.g., `yay -S python-pysodium`).
 
 ### openSUSE
 
 ```sh
 sudo zypper install -t pattern devel_basis
 sudo zypper install git curl xz cmake autoconf automake libtool \
-    python3 python3-pip libsodium-devel
+    python3 python3-pysodium python3-msgpack
 ```
 
 ### Alpine Linux
 
 ```sh
 sudo apk add build-base git curl xz cmake autoconf automake libtool \
-    python3 py3-pip libsodium-dev
+    python3 py3-pip py3-msgpack libsodium-dev
+pip3 install pysodium
 ```
 
-### Python packages (all distros)
-
-```sh
-pip3 install pysodium msgpack
-```
+Note: `py3-pysodium` is not in Alpine repos, so `pysodium` must be installed via pip.
 
 ## Build
 
