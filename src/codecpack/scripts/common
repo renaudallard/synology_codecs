@@ -1,0 +1,14 @@
+#!/bin/sh
+
+PKG_NAME="${SYNOPKG_PKGNAME:-CodecPack}"
+PKG_PATH="/var/packages/CodecPack"
+PKG_VAR_PATH="${PKG_PATH}/var"
+PACK_STATUS_CONF="${PKG_VAR_PATH}/pack_status.conf"
+CODEC_PACK_INFO=${PKG_PATH}"/target/pack/INFO"
+
+SetPackStatus() {
+  status=$1
+  echo "{\"status\": \"$status\"}" > ${PACK_STATUS_CONF}
+  chmod 644 ${PACK_STATUS_CONF}
+  chown ${PKG_NAME}:${PKG_NAME} ${PACK_STATUS_CONF}
+}

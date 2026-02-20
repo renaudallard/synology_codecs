@@ -601,13 +601,30 @@ build_codecpack() {
 
     # Copy package tree to staging, then overlay built binaries
     cp -a "$pkg_src/package/"* "$staging/package/"
-    cp "$ARCH_BUILD_DIR/ffmpeg"  "$staging/package/bin/ffmpeg41"
-    cp "$ARCH_BUILD_DIR/ffprobe" "$staging/package/bin/ffprobe"
-    # SS uses ffmpeg33-for-surveillance; audio apps use ffmpeg33-for-audio
-    ln -sf ffmpeg41 "$staging/package/bin/ffmpeg33-for-surveillance"
-    ln -sf ffmpeg41 "$staging/package/bin/ffmpeg33-for-audio"
+
+    # Place binaries in pack/bin/ (matching official codec pack layout)
+    cp "$ARCH_BUILD_DIR/ffmpeg"  "$staging/package/pack/bin/ffmpeg41"
+    cp "$ARCH_BUILD_DIR/ffprobe" "$staging/package/pack/bin/ffprobe"
+    ln -sf ffmpeg41 "$staging/package/pack/bin/ffmpeg33-for-surveillance"
+    ln -sf ffmpeg41 "$staging/package/pack/bin/ffmpeg33-for-audio"
+    chmod +x "$staging/package/pack/bin/ffmpeg41" "$staging/package/pack/bin/ffprobe"
+
+    # bin/ entries symlink to pack/bin/ (matching official layout)
+    ln -sf ../pack/bin/ffmpeg41 "$staging/package/bin/ffmpeg41"
+    ln -sf ../pack/bin/ffprobe "$staging/package/bin/ffprobe"
+    ln -sf ../pack/bin/ffmpeg33-for-surveillance "$staging/package/bin/ffmpeg33-for-surveillance"
+    ln -sf ../pack/bin/ffmpeg33-for-audio "$staging/package/bin/ffmpeg33-for-audio"
+    chmod +x "$staging/package/bin/synocodectool"
+
+    # lib/ entries symlink to pack/lib/ (matching official layout)
+    ln -sf ../pack/lib/ffmpeg41 "$staging/package/lib/ffmpeg41"
+    ln -sf ../pack/lib/ffmpeg33-for-surveillance "$staging/package/lib/ffmpeg33-for-surveillance"
+    ln -sf ../pack/lib/ffmpeg33-for-audio "$staging/package/lib/ffmpeg33-for-audio"
+
+    # Update pack/INFO arch
+    sed -i "s/^arch=.*/arch=\"${INFO_ARCH}\"/" "$staging/package/pack/INFO"
+
     cp "$ARCH_BUILD_DIR/libsynoame-license.so" "$staging/package/usr/lib/libsynoame-license.so"
-    chmod +x "$staging/package/bin/ffmpeg41" "$staging/package/bin/ffprobe"
     chmod +x "$staging/package/usr/bin/synoame-bin-check-license"
 
     tar czf "$staging/package.tgz" -C "$staging/package" .

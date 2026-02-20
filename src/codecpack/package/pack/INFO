@@ -1,0 +1,8 @@
+package="CodecPack_HEVC_AAC"
+version="99.0.0-9999"
+maintainer="community"
+arch="x86_64"
+firmware="99.0.0-9999"
+os_min_ver="99.0.0-9999"
+description="CodecPack_HEVC_AAC"
+displayname="CodecPack_HEVC_AAC"
