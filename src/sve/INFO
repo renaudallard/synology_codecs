@@ -1,5 +1,5 @@
 package="SurveillanceVideoExtension"
-version="99.0.0-0001"
+version="99.0.0-9999"
 os_min_ver="7.0-40000"
 displayname="Surveillance Video Extension"
 description="H.265/HEVC video support for Surveillance Station. Drop-in replacement with full codec support."

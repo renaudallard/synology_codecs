@@ -13,7 +13,7 @@ HOST_ARCH="$(uname -m)"
 AME_VER="3.1.0-3005"
 CP_PKG="CodecPack"
 SVE_PKG="SurveillanceVideoExtension"
-PKG_VER="99.0.0-0001"
+PKG_VER="99.0.0-9999"
 
 # SPK decryption key (keytype 3) — extracted from libsynocodesign.so
 SPK_SIGNING_KEY="FECAA2DD065A86A68E5FE86BA34CD8481590A79FA2C29A7D69F25A3B3BFAA19E"

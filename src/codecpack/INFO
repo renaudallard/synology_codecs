@@ -1,5 +1,5 @@
 package="CodecPack"
-version="99.0.0-0001"
+version="99.0.0-9999"
 os_min_ver="7.0-40000"
 displayname="Advanced Media Extensions"
 description="HEVC/AVC/AAC codec pack for DSM 7. Drop-in replacement restoring hardware-accelerated media support removed in AME 4.0."

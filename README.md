@@ -10,8 +10,8 @@ Synology silently removed HEVC/AVC decoding and encoding from AME 4.0. The offic
 
 | SPK file | Replaces | What it covers |
 |----------|----------|----------------|
-| `CodecPack-{arch}-99.0.0-0001.spk` | Advanced Media Extensions | Media Server, Synology Photos, Video Station, CLI transcoding |
-| `SurveillanceVideoExtension-{arch}-99.0.0-0001.spk` | Surveillance Video Extension | Surveillance Station H.265 camera streams |
+| `CodecPack-{arch}-99.0.0-9999.spk` | Advanced Media Extensions | Media Server, Synology Photos, Video Station, CLI transcoding |
+| `SurveillanceVideoExtension-{arch}-99.0.0-9999.spk` | Surveillance Video Extension | Surveillance Station H.265 camera streams |
 
 Both packages are built for **x86_64** (Intel/AMD) and **aarch64** (ARM64: rtd1296, rtd1619b, armada37xx).
 
