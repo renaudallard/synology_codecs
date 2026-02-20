@@ -167,6 +167,16 @@ Then test with your apps:
             └── bin/                 # ffmpeg, ffprobe (placed by build)
 ```
 
+## Why no pre-built downloads?
+
+Pre-built SPK packages cannot be distributed for two reasons:
+
+1. **Patched Synology proprietary library** — The CodecPack SPK contains a modified `libsynoame-license.so` (Synology's property) with license checks patched out. Distributing this modified binary would mean redistributing proprietary Synology code.
+
+2. **FFmpeg GPL + nonfree license conflict** — FFmpeg is built with `--enable-gpl` (required by x264/x265) and `--enable-nonfree` (required by fdk-aac). The Fraunhofer FDK AAC license is GPL-incompatible, which makes the resulting binary non-redistributable under the GPL.
+
+Building locally from source avoids both issues. The build script automates the entire process — you only need a compiler and standard build tools.
+
 ## Notes
 
 - Package version `99.0.0` ensures Package Center treats it as newer than any official release
