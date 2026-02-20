@@ -102,13 +102,23 @@ cd synology_codecs
 
 The script will:
 
-1. Download AME 3.1.0-3005 from the Synology CDN
+1. Download AME 3.1.0-3005 from Synology's CDN (tries multiple mirrors automatically)
 2. Decrypt the encrypted SPK and extract `libsynoame-license.so`
 3. Apply the five binary patches (with MD5 verification before and after)
 4. Clone and compile all codec libraries and FFmpeg from source as a static binary
 5. Package everything into two SPK files in `out/`
 
 Source repos and downloads are cached in `build/cache/` so subsequent builds are fast. Per-architecture build artifacts are kept in separate directories (`build/x86_64/`, `build/aarch64/`).
+
+If the AME download fails (e.g., Synology removes the file from their CDN), you can manually download the SPK and place it in `build/cache/`:
+
+```sh
+# For x86_64:
+cp CodecPack-x86_64-3.1.0-3005.spk build/cache/
+
+# For aarch64:
+cp CodecPack-rtd1296-3.1.0-3005.spk build/cache/
+```
 
 ## Install
 

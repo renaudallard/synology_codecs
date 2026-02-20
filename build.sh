@@ -67,7 +67,12 @@ set_arch_config() {
         CROSS_PREFIX="${CROSS_HOST}-"
     fi
 
-    AME_URL="https://global.synologydownload.com/download/Package/spk/CodecPack/${AME_VER}/CodecPack-${AME_SPK_ARCH}-${AME_VER}.spk"
+    AME_SPK_NAME="CodecPack-${AME_SPK_ARCH}-${AME_VER}.spk"
+    AME_URLS=(
+        "https://global.synologydownload.com/download/Package/spk/CodecPack/${AME_VER}/${AME_SPK_NAME}"
+        "https://global.download.synology.com/download/Package/spk/CodecPack/${AME_VER}/${AME_SPK_NAME}"
+        "https://archive.synology.com/download/Package/spk/CodecPack/${AME_VER}/${AME_SPK_NAME}"
+    )
 }
 
 check_deps() {
@@ -244,11 +249,24 @@ setup_cross_env() {
 # ── step 1: download & extract AME ────────────────────────────────────
 download_ame() {
     local ame_spk="$CACHE_DIR/ame_${TARGET_ARCH}.spk"
-    if [ ! -f "$ame_spk" ]; then
-        info "Downloading AME ${AME_VER} for ${TARGET_ARCH}..."
-        curl -fSL -o "$ame_spk" "$AME_URL"
-    else
+    if [ -f "$ame_spk" ]; then
         info "AME SPK for ${TARGET_ARCH} already cached"
+    elif [ -f "$CACHE_DIR/$AME_SPK_NAME" ]; then
+        info "Using manually placed $AME_SPK_NAME"
+        cp "$CACHE_DIR/$AME_SPK_NAME" "$ame_spk"
+    else
+        info "Downloading AME ${AME_VER} for ${TARGET_ARCH}..."
+        local ok=false
+        for url in "${AME_URLS[@]}"; do
+            if curl -fSL -o "$ame_spk" "$url" 2>/dev/null; then
+                ok=true
+                break
+            fi
+            info "  Mirror failed, trying next..."
+        done
+        if [ "$ok" != "true" ]; then
+            die "All download mirrors failed. You can manually download the AME SPK and place it at: $CACHE_DIR/$AME_SPK_NAME"
+        fi
     fi
 
     info "Decrypting AME SPK..."
