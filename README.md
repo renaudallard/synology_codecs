@@ -10,12 +10,14 @@ Synology silently removed HEVC/AVC decoding and encoding from AME 4.0. The offic
 
 | SPK file | Replaces | What it covers |
 |----------|----------|----------------|
-| `CodecPack-x86_64-99.0.0-0001.spk` | Advanced Media Extensions | Media Server, Synology Photos, Video Station, CLI transcoding |
-| `SurveillanceVideoExtension-x86_64-99.0.0-0001.spk` | Surveillance Video Extension | Surveillance Station H.265 camera streams |
+| `CodecPack-{arch}-99.0.0-0001.spk` | Advanced Media Extensions | Media Server, Synology Photos, Video Station, CLI transcoding |
+| `SurveillanceVideoExtension-{arch}-99.0.0-0001.spk` | Surveillance Video Extension | Surveillance Station H.265 camera streams |
+
+Both packages are built for **x86_64** (Intel/AMD) and **aarch64** (ARM64: rtd1296, rtd1619b, armada37xx).
 
 ## How it works
 
-**FFmpeg built from source** — The build script cross-compiles FFmpeg 7.1 and all codec libraries from their official upstream repositories as a fully static x86_64 binary. No pre-built third-party binaries are used.
+**FFmpeg built from source** — The build script compiles FFmpeg 7.1 and all codec libraries from their official upstream repositories as a fully static binary. No pre-built third-party binaries are used. Cross-compilation is supported in both directions (x86_64 host building aarch64, or vice versa).
 
 Included codecs:
 
@@ -30,36 +32,55 @@ Included codecs:
 | [libaom](https://aomedia.googlesource.com/aom) | 3.13.1 | AV1 video |
 | [libvorbis](https://github.com/xiph/vorbis) | 1.3.7 | Vorbis audio |
 
-**License library patch** — The build script downloads the official AME 3.1.0-3005 SPK, decrypts it (Synology uses an XChaCha20-Poly1305 encrypted archive format), extracts `libsynoame-license.so`, and patches five license-check functions to unconditionally return true:
+**License library patch** — The build script downloads the official AME 3.1.0-3005 SPK, decrypts it (Synology uses an XChaCha20-Poly1305 encrypted archive format), extracts `libsynoame-license.so`, and patches five license-check functions to unconditionally return true.
 
-| Function | File offset | Patch |
-|----------|-------------|-------|
-| `IsValidStatus` | `0x9144` | `mov eax, 1; ret` |
-| `ValidateLicense` | `0x9234` | `mov eax, 1; ret` |
-| `CheckLicense` | `0x9614` | `mov eax, 1; ret` |
-| `CheckOfflineLicense` | `0x9804` | `mov eax, 1; ret` |
-| `SLIsXA` | `0xbe74` | `mov eax, 1; ret` |
+x86_64 patches (`B8 01 00 00 00 C3` = `mov eax, 1; ret` after `endbr64`):
 
-Each patch writes `B8 01 00 00 00 C3` immediately after the `endbr64` instruction at the function entry point. Both the original and patched checksums are verified during the build.
+| Function | File offset |
+|----------|-------------|
+| `IsValidStatus` | `0x9144` |
+| `ValidateLicense` | `0x9234` |
+| `CheckLicense` | `0x9614` |
+| `CheckOfflineLicense` | `0x9804` |
+| `SLIsXA` | `0xbe74` |
+
+aarch64 patches (`20 00 80 52 C0 03 5F D6` = `mov w0, #1; ret`):
+
+| Function | File offset |
+|----------|-------------|
+| `IsValidStatus` | `0x74c4` |
+| `ValidateLicense` | `0x75f0` |
+| `CheckLicense` | `0x7a10` |
+| `CheckOfflineLicense` | `0x7c00` |
+| `SLIsXA` | `0xa220` |
+
+Both the original and patched checksums are verified during the build.
 
 **Activation files** — Pre-filled `activation.conf` and `offline_license.json` are bundled and copied into place at install time.
 
-## Requirements
+## Supported NAS platforms
 
-**Target NAS:**
-- Synology NAS with an **x86_64** CPU (Intel Celeron, Atom, Xeon, or AMD)
-- **DSM 7.0** or later
+| Architecture | Synology platforms | Example models |
+|-------------|-------------------|----------------|
+| x86_64 | All Intel/AMD | DS920+, DS1621+, DS723+, RS1221+ |
+| aarch64 | rtd1296, rtd1619b, armada37xx | DS220j, DS420j, DS124, DS223, DS423, DS119j |
+
+## Requirements
 
 **Build host:**
 - `bash`, `curl`, `tar`, `xz`, `git`, `make`, `cmake`, `python3`
-- Cross-compilation toolchain (if not building on x86_64):
-  ```sh
-  sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu
-  ```
 - `autoconf`, `automake`, `libtool` (for codec library builds)
 - Python packages for SPK decryption:
   ```sh
   pip3 install pysodium msgpack
+  ```
+- Cross-compilation toolchain (only if building for a different architecture):
+  ```sh
+  # Building aarch64 targets on an x86_64 host:
+  sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+  # Building x86_64 targets on an aarch64 host:
+  sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu
   ```
 
 ## Build
@@ -67,7 +88,16 @@ Each patch writes `B8 01 00 00 00 C3` immediately after the `endbr64` instructio
 ```sh
 git clone https://github.com/renaudallard/synology_codecs.git
 cd synology_codecs
+
+# Build for host architecture (auto-detected)
 ./build.sh
+
+# Build for a specific architecture
+./build.sh --arch x86_64
+./build.sh --arch aarch64
+
+# Build for both architectures
+./build.sh --arch all
 ```
 
 The script will:
@@ -75,17 +105,17 @@ The script will:
 1. Download AME 3.1.0-3005 from the Synology CDN
 2. Decrypt the encrypted SPK and extract `libsynoame-license.so`
 3. Apply the five binary patches (with MD5 verification before and after)
-4. Clone and cross-compile all codec libraries and FFmpeg from source as a static x86_64 binary
+4. Clone and compile all codec libraries and FFmpeg from source as a static binary
 5. Package everything into two SPK files in `out/`
 
-Source repos and downloads are cached in `build/cache/` so subsequent builds are fast.
+Source repos and downloads are cached in `build/cache/` so subsequent builds are fast. Per-architecture build artifacts are kept in separate directories (`build/x86_64/`, `build/aarch64/`).
 
 ## Install
 
 1. Open **Package Center** on your NAS
 2. **Uninstall** the official *Advanced Media Extensions* and *Surveillance Video Extension* if present
-3. Click **Manual Install** and select `CodecPack-x86_64-99.0.0-0001.spk`
-4. Repeat for `SurveillanceVideoExtension-x86_64-99.0.0-0001.spk`
+3. Click **Manual Install** and select the `CodecPack` SPK matching your NAS architecture
+4. Repeat for the `SurveillanceVideoExtension` SPK
 5. If the installer cannot write activation files, it will print a one-line `sudo` command to run via SSH
 
 ## Verify
@@ -112,7 +142,7 @@ Then test with your apps:
 ├── build.sh                        # Main build script
 └── src/
     ├── codecpack/                   # CodecPack SPK sources
-    │   ├── INFO                     # Package metadata
+    │   ├── INFO                     # Package metadata (arch set at build time)
     │   ├── conf/
     │   │   ├── privilege            # Run-as config
     │   │   └── resource             # usr-local-linker paths
@@ -142,6 +172,7 @@ Then test with your apps:
 - Package version `99.0.0` ensures Package Center treats it as newer than any official release
 - The `start-stop-status` script always reports the package as running (there is no daemon)
 - Both packages declare `run-as: package` privilege
+- The aarch64 SPK covers all ARM64 Synology platforms (rtd1296, rtd1619b, armada37xx) — the `libsynoame-license.so` is identical across all three
 - The SPK decryption keys are public knowledge, extracted from `libsynocodesign.so` by the [SynoXtract](https://github.com/prt1999/SynoXtract) and [synodecrypt](https://github.com/synacktiv/synodecrypt) projects
 - FFmpeg and all codec libraries are compiled from source — no pre-built third-party binaries are trusted
 

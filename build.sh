@@ -4,19 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC_DIR="$SCRIPT_DIR/src"
 BUILD_DIR="$SCRIPT_DIR/build"
-CACHE_DIR="$SCRIPT_DIR/build/cache"
-FF_SRC="$BUILD_DIR/ffmpeg-src"
-FF_PREFIX="$BUILD_DIR/ffmpeg-prefix"
+CACHE_DIR="$BUILD_DIR/cache"
 OUT_DIR="$SCRIPT_DIR/out"
 
 NJOBS=$(nproc)
+HOST_ARCH="$(uname -m)"
 
 AME_VER="3.1.0-3005"
-AME_URL="https://global.synologydownload.com/download/Package/spk/CodecPack/${AME_VER}/CodecPack-x86_64-${AME_VER}.spk"
-
-ORIG_SO_MD5="09e3adeafe85b353c9427d93ef0185e9"
-PATCHED_SO_MD5="86d5f9f93c80c35e6c59f8ab05da3dc2"
-
 CP_PKG="CodecPack"
 SVE_PKG="SurveillanceVideoExtension"
 PKG_VER="99.0.0-0001"
@@ -25,13 +19,56 @@ PKG_VER="99.0.0-0001"
 SPK_SIGNING_KEY="FECAA2DD065A86A68E5FE86BA34CD8481590A79FA2C29A7D69F25A3B3BFAA19E"
 SPK_MASTER_KEY="CF0D8D6ECB95EF97D0AC6A7021D99124C699808CF2CC5157DFEA5EBF15C805E7"
 
-# Cross-compilation target
-CROSS_HOST="x86_64-linux-gnu"
-CROSS_PREFIX="${CROSS_HOST}-"
-
 # ── helpers ────────────────────────────────────────────────────────────
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
+
+# ── per-architecture configuration ────────────────────────────────────
+set_arch_config() {
+    case "$TARGET_ARCH" in
+        x86_64)
+            AME_SPK_ARCH="x86_64"
+            SPK_ARCH="x86_64"
+            INFO_ARCH="x86_64"
+            ORIG_SO_MD5="09e3adeafe85b353c9427d93ef0185e9"
+            PATCHED_SO_MD5="86d5f9f93c80c35e6c59f8ab05da3dc2"
+            PATCH_OFFSETS=(9144 9234 9614 9804 be74)
+            PATCH_BYTES="B8 01 00 00 00 C3"  # x86_64: mov eax,1; ret
+            VPX_TARGET="x86_64-linux-gcc"
+            NEEDS_NASM=true
+            ;;
+        aarch64)
+            AME_SPK_ARCH="rtd1296"
+            SPK_ARCH="aarch64"
+            INFO_ARCH="rtd1296 rtd1619b armada37xx"
+            ORIG_SO_MD5="f0b33cc2ec241a43f02a332bcbf0d701"
+            PATCHED_SO_MD5="05ae2e473d9c20d6e3630bb751122305"
+            PATCH_OFFSETS=(74c4 75f0 7a10 7c00 a220)
+            PATCH_BYTES="20 00 80 52 C0 03 5F D6"  # aarch64: mov w0,#1; ret
+            VPX_TARGET="arm64-linux-gcc"
+            NEEDS_NASM=false
+            ;;
+        *)
+            die "Unsupported architecture: $TARGET_ARCH (must be x86_64 or aarch64)"
+            ;;
+    esac
+
+    # Per-arch build directories (shared source cache)
+    ARCH_BUILD_DIR="$BUILD_DIR/$TARGET_ARCH"
+    FF_SRC="$ARCH_BUILD_DIR/ffmpeg-src"
+    FF_PREFIX="$ARCH_BUILD_DIR/ffmpeg-prefix"
+
+    # Cross-compilation setup
+    if [ "$HOST_ARCH" = "$TARGET_ARCH" ]; then
+        CROSS_PREFIX=""
+        CROSS_HOST=""
+    else
+        CROSS_HOST="${TARGET_ARCH}-linux-gnu"
+        CROSS_PREFIX="${CROSS_HOST}-"
+    fi
+
+    AME_URL="https://global.synologydownload.com/download/Package/spk/CodecPack/${AME_VER}/CodecPack-${AME_SPK_ARCH}-${AME_VER}.spk"
+}
 
 check_deps() {
     local missing=()
@@ -44,10 +81,10 @@ check_deps() {
     python3 -c "import pysodium, msgpack" 2>/dev/null || \
         die "Missing Python modules. Install with: pip3 install pysodium msgpack"
 
-    # Check cross toolchain
-    if [ "$(uname -m)" != "x86_64" ]; then
+    # Check cross toolchain if cross-compiling
+    if [ -n "$CROSS_PREFIX" ]; then
         command -v "${CROSS_PREFIX}gcc" >/dev/null || \
-            die "Cross compiler not found. Install with: sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu"
+            die "Cross compiler not found. Install with: sudo apt install gcc-${TARGET_ARCH}-linux-gnu g++-${TARGET_ARCH}-linux-gnu"
     fi
 }
 
@@ -178,13 +215,13 @@ git_clone() {
     fi
 }
 
-# ── cross-compile helpers ─────────────────────────────────────────────
+# ── cross-compile setup ──────────────────────────────────────────────
 setup_cross_env() {
     # Use system pkg-config (avoid user stubs)
     PKG_CONFIG="$(command -v /usr/bin/pkg-config || command -v pkg-config)"
     export PKG_CONFIG
 
-    if [ "$(uname -m)" = "x86_64" ]; then
+    if [ -z "$CROSS_PREFIX" ]; then
         # Native build
         export CC=gcc CXX=g++ AR=ar RANLIB=ranlib STRIP=strip
         CONFIGURE_HOST=""
@@ -196,7 +233,7 @@ setup_cross_env() {
         export RANLIB="${CROSS_PREFIX}ranlib"
         export STRIP="${CROSS_PREFIX}strip"
         CONFIGURE_HOST="--host=${CROSS_HOST}"
-        CMAKE_CROSS_ARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=x86_64 -DCMAKE_C_COMPILER=${CC} -DCMAKE_CXX_COMPILER=${CXX}"
+        CMAKE_CROSS_ARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=${TARGET_ARCH} -DCMAKE_C_COMPILER=${CC} -DCMAKE_CXX_COMPILER=${CXX}"
     fi
     export PKG_CONFIG_PATH="$FF_PREFIX/lib/pkgconfig"
     export CFLAGS="-I$FF_PREFIX/include"
@@ -206,20 +243,20 @@ setup_cross_env() {
 
 # ── step 1: download & extract AME ────────────────────────────────────
 download_ame() {
-    local ame_spk="$CACHE_DIR/ame.spk"
+    local ame_spk="$CACHE_DIR/ame_${TARGET_ARCH}.spk"
     if [ ! -f "$ame_spk" ]; then
-        info "Downloading AME ${AME_VER}..."
+        info "Downloading AME ${AME_VER} for ${TARGET_ARCH}..."
         curl -fSL -o "$ame_spk" "$AME_URL"
     else
-        info "AME SPK already cached"
+        info "AME SPK for ${TARGET_ARCH} already cached"
     fi
 
     info "Decrypting AME SPK..."
-    local ame_tar="$BUILD_DIR/ame_decrypted.tar"
+    local ame_tar="$ARCH_BUILD_DIR/ame_decrypted.tar"
     decrypt_spk "$ame_spk" "$ame_tar"
 
     info "Extracting libsynoame-license.so..."
-    local ame_tmp="$BUILD_DIR/ame_tmp"
+    local ame_tmp="$ARCH_BUILD_DIR/ame_tmp"
     mkdir -p "$ame_tmp"
     tar xf "$ame_tar" -C "$ame_tmp" package.tgz
 
@@ -236,11 +273,11 @@ download_ame() {
     so_file=$(find "$ame_tmp" -name 'libsynoame-license.so' -type f | head -1)
     [ -n "$so_file" ] || die "libsynoame-license.so not found in AME package"
 
-    cp "$so_file" "$BUILD_DIR/libsynoame-license.so"
+    cp "$so_file" "$ARCH_BUILD_DIR/libsynoame-license.so"
     rm -rf "$ame_tmp" "$ame_tar"
 
     local actual_md5
-    actual_md5=$(md5sum "$BUILD_DIR/libsynoame-license.so" | awk '{print $1}')
+    actual_md5=$(md5sum "$ARCH_BUILD_DIR/libsynoame-license.so" | awk '{print $1}')
     if [ "$actual_md5" != "$ORIG_SO_MD5" ]; then
         die "Original .so MD5 mismatch: expected $ORIG_SO_MD5, got $actual_md5"
     fi
@@ -249,25 +286,13 @@ download_ame() {
 
 # ── step 2: patch libsynoame-license.so ───────────────────────────────
 patch_so() {
-    local so="$BUILD_DIR/libsynoame-license.so"
-    info "Patching libsynoame-license.so..."
+    local so="$ARCH_BUILD_DIR/libsynoame-license.so"
+    info "Patching libsynoame-license.so for ${TARGET_ARCH}..."
 
-    # Each patch: write "mov eax,1; ret" (B8 01 00 00 00 C3) right after endbr64
-
-    # IsValidStatus @ 0x9144
-    patch_bytes "$so" 9144 B8 01 00 00 00 C3
-
-    # ValidateLicense @ 0x9234
-    patch_bytes "$so" 9234 B8 01 00 00 00 C3
-
-    # CheckLicense @ 0x9614
-    patch_bytes "$so" 9614 B8 01 00 00 00 C3
-
-    # CheckOfflineLicense @ 0x9804
-    patch_bytes "$so" 9804 B8 01 00 00 00 C3
-
-    # SLIsXA @ 0xbe74
-    patch_bytes "$so" be74 B8 01 00 00 00 C3
+    # Patch all 5 license-check functions to unconditionally return true
+    for offset in "${PATCH_OFFSETS[@]}"; do
+        patch_bytes "$so" "$offset" $PATCH_BYTES
+    done
 
     local actual_md5
     actual_md5=$(md5sum "$so" | awk '{print $1}')
@@ -301,7 +326,8 @@ fetch_sources() {
 }
 
 build_nasm() {
-    # nasm is needed by x264/x265/ffmpeg for x86 asm optimizations
+    # nasm outputs x86 machine code — only needed for x86_64 targets
+    if [ "$NEEDS_NASM" != "true" ]; then return; fi
     if [ -x "$FF_PREFIX/bin/nasm" ]; then return; fi
     info "Building nasm..."
     local ver="2.16.03"
@@ -326,14 +352,16 @@ build_x264() {
     rm -rf "$FF_SRC/x264"
     cp -a "$CACHE_DIR/x264" "$FF_SRC/x264"
     cd "$FF_SRC/x264"
-    ./configure \
-        --prefix="$FF_PREFIX" \
-        --enable-static --disable-shared \
-        --disable-cli \
-        --cross-prefix="${CROSS_PREFIX}" \
-        --host="${CROSS_HOST}" \
-        --extra-cflags="$CFLAGS" \
+    local args=(
+        --prefix="$FF_PREFIX"
+        --enable-static --disable-shared --disable-cli
+        --extra-cflags="$CFLAGS"
         --extra-ldflags="$LDFLAGS"
+    )
+    if [ -n "$CROSS_PREFIX" ]; then
+        args+=(--cross-prefix="${CROSS_PREFIX}" --host="${CROSS_HOST}")
+    fi
+    ./configure "${args[@]}"
     make -j"$NJOBS"
     make install
 }
@@ -382,7 +410,7 @@ build_libvpx() {
     cd "$FF_SRC/libvpx"
     CROSS="${CROSS_PREFIX}" ./configure \
         --prefix="$FF_PREFIX" \
-        --target=x86_64-linux-gcc \
+        --target="$VPX_TARGET" \
         --enable-static --disable-shared \
         --disable-examples --disable-tools --disable-docs \
         --disable-unit-tests \
@@ -475,7 +503,7 @@ build_aom() {
 }
 
 build_ffmpeg() {
-    if [ -f "$BUILD_DIR/ffmpeg" ] && [ -f "$BUILD_DIR/ffprobe" ]; then
+    if [ -f "$ARCH_BUILD_DIR/ffmpeg" ] && [ -f "$ARCH_BUILD_DIR/ffprobe" ]; then
         info "FFmpeg already built"
         return
     fi
@@ -485,8 +513,8 @@ build_ffmpeg() {
     cd "$FF_SRC/ffmpeg"
 
     local cross_args=""
-    if [ "$(uname -m)" != "x86_64" ]; then
-        cross_args="--enable-cross-compile --cross-prefix=${CROSS_PREFIX} --arch=x86_64 --target-os=linux"
+    if [ -n "$CROSS_PREFIX" ]; then
+        cross_args="--enable-cross-compile --cross-prefix=${CROSS_PREFIX} --arch=${TARGET_ARCH} --target-os=linux"
     fi
 
     PKG_CONFIG_PATH="$FF_PREFIX/lib/pkgconfig" ./configure \
@@ -512,10 +540,10 @@ build_ffmpeg() {
 
     make -j"$NJOBS"
 
-    cp ffmpeg  "$BUILD_DIR/ffmpeg"
-    cp ffprobe "$BUILD_DIR/ffprobe"
-    $STRIP "$BUILD_DIR/ffmpeg" "$BUILD_DIR/ffprobe"
-    chmod +x "$BUILD_DIR/ffmpeg" "$BUILD_DIR/ffprobe"
+    cp ffmpeg  "$ARCH_BUILD_DIR/ffmpeg"
+    cp ffprobe "$ARCH_BUILD_DIR/ffprobe"
+    $STRIP "$ARCH_BUILD_DIR/ffmpeg" "$ARCH_BUILD_DIR/ffprobe"
+    chmod +x "$ARCH_BUILD_DIR/ffmpeg" "$ARCH_BUILD_DIR/ffprobe"
     info "FFmpeg built and stripped"
 }
 
@@ -541,30 +569,34 @@ build_all_ffmpeg() {
 # ── step 4: generate icons ────────────────────────────────────────────
 generate_icons() {
     info "Generating placeholder icons..."
-    gen_png 72  "$BUILD_DIR/PACKAGE_ICON.PNG"
-    gen_png 256 "$BUILD_DIR/PACKAGE_ICON_256.PNG"
+    gen_png 72  "$ARCH_BUILD_DIR/PACKAGE_ICON.PNG"
+    gen_png 256 "$ARCH_BUILD_DIR/PACKAGE_ICON_256.PNG"
 }
 
 # ── step 5: assemble CodecPack SPK ────────────────────────────────────
 build_codecpack() {
-    info "Building CodecPack SPK..."
+    info "Building CodecPack SPK for ${TARGET_ARCH}..."
     local pkg_src="$SRC_DIR/codecpack"
-    local staging="$BUILD_DIR/codecpack_staging"
+    local staging="$ARCH_BUILD_DIR/codecpack_staging"
     rm -rf "$staging"
-    mkdir -p "$staging"
+    mkdir -p "$staging/package"
 
-    cp "$BUILD_DIR/ffmpeg"  "$pkg_src/package/pack/bin/ffmpeg41"
-    cp "$BUILD_DIR/ffprobe" "$pkg_src/package/pack/bin/ffprobe"
-    cp "$BUILD_DIR/libsynoame-license.so" "$pkg_src/package/usr/lib/libsynoame-license.so"
-    chmod +x "$pkg_src/package/pack/bin/ffmpeg41"
-    chmod +x "$pkg_src/package/pack/bin/ffprobe"
-    chmod +x "$pkg_src/package/usr/bin/synoame-bin-check-license"
+    # Copy package tree to staging, then overlay built binaries
+    cp -a "$pkg_src/package/"* "$staging/package/"
+    cp "$ARCH_BUILD_DIR/ffmpeg"  "$staging/package/pack/bin/ffmpeg41"
+    cp "$ARCH_BUILD_DIR/ffprobe" "$staging/package/pack/bin/ffprobe"
+    cp "$ARCH_BUILD_DIR/libsynoame-license.so" "$staging/package/usr/lib/libsynoame-license.so"
+    chmod +x "$staging/package/pack/bin/ffmpeg41" "$staging/package/pack/bin/ffprobe"
+    chmod +x "$staging/package/usr/bin/synoame-bin-check-license"
 
-    tar czf "$staging/package.tgz" -C "$pkg_src/package" .
+    tar czf "$staging/package.tgz" -C "$staging/package" .
+    rm -rf "$staging/package"
 
-    cp "$pkg_src/INFO" "$staging/INFO"
-    cp "$BUILD_DIR/PACKAGE_ICON.PNG" "$staging/PACKAGE_ICON.PNG"
-    cp "$BUILD_DIR/PACKAGE_ICON_256.PNG" "$staging/PACKAGE_ICON_256.PNG"
+    # INFO with correct arch for this target
+    sed "s/^arch=.*/arch=\"${INFO_ARCH}\"/" "$pkg_src/INFO" > "$staging/INFO"
+
+    cp "$ARCH_BUILD_DIR/PACKAGE_ICON.PNG" "$staging/PACKAGE_ICON.PNG"
+    cp "$ARCH_BUILD_DIR/PACKAGE_ICON_256.PNG" "$staging/PACKAGE_ICON_256.PNG"
 
     chmod +x "$pkg_src/scripts/"*
     tar czf "$staging/scripts.tar.gz" -C "$pkg_src/scripts" .
@@ -572,29 +604,33 @@ build_codecpack() {
     mkdir -p "$staging/conf"
     cp "$pkg_src/conf/"* "$staging/conf/"
 
-    local spk_name="${CP_PKG}-x86_64-${PKG_VER}.spk"
+    local spk_name="${CP_PKG}-${SPK_ARCH}-${PKG_VER}.spk"
     tar cf "$OUT_DIR/$spk_name" -C "$staging" .
     info "Built: $OUT_DIR/$spk_name"
 }
 
 # ── step 6: assemble SVE SPK ──────────────────────────────────────────
 build_sve() {
-    info "Building SurveillanceVideoExtension SPK..."
+    info "Building SurveillanceVideoExtension SPK for ${TARGET_ARCH}..."
     local pkg_src="$SRC_DIR/sve"
-    local staging="$BUILD_DIR/sve_staging"
+    local staging="$ARCH_BUILD_DIR/sve_staging"
     rm -rf "$staging"
-    mkdir -p "$staging"
+    mkdir -p "$staging/package"
 
-    cp "$BUILD_DIR/ffmpeg"  "$pkg_src/package/bin/ffmpeg"
-    cp "$BUILD_DIR/ffprobe" "$pkg_src/package/bin/ffprobe"
-    chmod +x "$pkg_src/package/bin/ffmpeg"
-    chmod +x "$pkg_src/package/bin/ffprobe"
+    # Copy package tree to staging, then overlay built binaries
+    cp -a "$pkg_src/package/"* "$staging/package/"
+    cp "$ARCH_BUILD_DIR/ffmpeg"  "$staging/package/bin/ffmpeg"
+    cp "$ARCH_BUILD_DIR/ffprobe" "$staging/package/bin/ffprobe"
+    chmod +x "$staging/package/bin/ffmpeg" "$staging/package/bin/ffprobe"
 
-    tar czf "$staging/package.tgz" -C "$pkg_src/package" .
+    tar czf "$staging/package.tgz" -C "$staging/package" .
+    rm -rf "$staging/package"
 
-    cp "$pkg_src/INFO" "$staging/INFO"
-    cp "$BUILD_DIR/PACKAGE_ICON.PNG" "$staging/PACKAGE_ICON.PNG"
-    cp "$BUILD_DIR/PACKAGE_ICON_256.PNG" "$staging/PACKAGE_ICON_256.PNG"
+    # INFO with correct arch for this target
+    sed "s/^arch=.*/arch=\"${INFO_ARCH}\"/" "$pkg_src/INFO" > "$staging/INFO"
+
+    cp "$ARCH_BUILD_DIR/PACKAGE_ICON.PNG" "$staging/PACKAGE_ICON.PNG"
+    cp "$ARCH_BUILD_DIR/PACKAGE_ICON_256.PNG" "$staging/PACKAGE_ICON_256.PNG"
 
     chmod +x "$pkg_src/scripts/"*
     tar czf "$staging/scripts.tar.gz" -C "$pkg_src/scripts" .
@@ -602,18 +638,21 @@ build_sve() {
     mkdir -p "$staging/conf"
     cp "$pkg_src/conf/"* "$staging/conf/"
 
-    local spk_name="${SVE_PKG}-x86_64-${PKG_VER}.spk"
+    local spk_name="${SVE_PKG}-${SPK_ARCH}-${PKG_VER}.spk"
     tar cf "$OUT_DIR/$spk_name" -C "$staging" .
     info "Built: $OUT_DIR/$spk_name"
 }
 
-# ── main ──────────────────────────────────────────────────────────────
-main() {
-    check_deps
+# ── build one architecture ────────────────────────────────────────────
+build_for_arch() {
+    TARGET_ARCH="$1"
+    set_arch_config
+    info "=== Building for ${TARGET_ARCH} (host: ${HOST_ARCH}) ==="
 
-    rm -rf "$BUILD_DIR/ame_tmp" \
-           "$BUILD_DIR/codecpack_staging" "$BUILD_DIR/sve_staging"
-    mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$OUT_DIR"
+    check_deps
+    rm -rf "$ARCH_BUILD_DIR/ame_tmp" \
+           "$ARCH_BUILD_DIR/codecpack_staging" "$ARCH_BUILD_DIR/sve_staging"
+    mkdir -p "$ARCH_BUILD_DIR" "$CACHE_DIR" "$OUT_DIR"
 
     download_ame
     patch_so
@@ -621,6 +660,50 @@ main() {
     generate_icons
     build_codecpack
     build_sve
+}
+
+# ── main ──────────────────────────────────────────────────────────────
+usage() {
+    cat <<EOF
+Usage: $0 [--arch x86_64|aarch64|all]
+
+Build HEVC codec SPK packages for Synology NAS.
+Default: build for host architecture ($(uname -m))
+
+  --arch x86_64    Build for x86_64 (Intel/AMD)
+  --arch aarch64   Build for aarch64 (ARM64: rtd1296, rtd1619b, armada37xx)
+  --arch all       Build for both architectures
+EOF
+    exit 1
+}
+
+main() {
+    local target="$HOST_ARCH"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --arch)
+                [ $# -ge 2 ] || usage
+                target="$2"
+                shift 2
+                ;;
+            -h|--help) usage ;;
+            *) usage ;;
+        esac
+    done
+
+    case "$target" in
+        x86_64|aarch64)
+            build_for_arch "$target"
+            ;;
+        all)
+            build_for_arch x86_64
+            build_for_arch aarch64
+            ;;
+        *)
+            die "Unsupported architecture: $target (must be x86_64, aarch64, or all)"
+            ;;
+    esac
 
     info ""
     info "Done! SPK files in $OUT_DIR/:"
