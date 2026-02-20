@@ -67,21 +67,58 @@ Both the original and patched checksums are verified during the build.
 
 ## Requirements
 
-**Build host:**
-- `bash`, `curl`, `tar`, `xz`, `git`, `make`, `cmake`, `python3`
-- `autoconf`, `automake`, `libtool` (for codec library builds)
-- Python packages for SPK decryption:
-  ```sh
-  pip3 install pysodium msgpack
-  ```
-- Cross-compilation toolchain (only if building for a different architecture):
-  ```sh
-  # Building aarch64 targets on an x86_64 host:
-  sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+### Debian / Ubuntu
 
-  # Building x86_64 targets on an aarch64 host:
-  sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu
-  ```
+```sh
+sudo apt update
+sudo apt install build-essential git curl xz-utils cmake autoconf automake libtool \
+    python3 python3-pip libsodium-dev
+
+# Cross-compilation (optional):
+# Building aarch64 targets on an x86_64 host:
+sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+# Building x86_64 targets on an aarch64 host:
+sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu
+```
+
+### Fedora / RHEL / CentOS / Rocky / Alma
+
+```sh
+sudo dnf groupinstall "Development Tools"
+sudo dnf install git curl xz cmake autoconf automake libtool \
+    python3 python3-pip libsodium-devel
+
+# Cross-compilation (optional, Fedora only):
+sudo dnf install gcc-aarch64-linux-gnu gcc-c++-aarch64-linux-gnu
+```
+
+### Arch Linux / Manjaro
+
+```sh
+sudo pacman -S base-devel git curl xz cmake autoconf automake libtool \
+    python python-pip libsodium
+```
+
+### openSUSE
+
+```sh
+sudo zypper install -t pattern devel_basis
+sudo zypper install git curl xz cmake autoconf automake libtool \
+    python3 python3-pip libsodium-devel
+```
+
+### Alpine Linux
+
+```sh
+sudo apk add build-base git curl xz cmake autoconf automake libtool \
+    python3 py3-pip libsodium-dev
+```
+
+### Python packages (all distros)
+
+```sh
+pip3 install pysodium msgpack
+```
 
 ## Build
 
