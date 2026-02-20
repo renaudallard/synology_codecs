@@ -616,14 +616,16 @@ build_codecpack() {
     cp "$ARCH_BUILD_DIR/PACKAGE_ICON.PNG" "$staging/PACKAGE_ICON.PNG"
     cp "$ARCH_BUILD_DIR/PACKAGE_ICON_256.PNG" "$staging/PACKAGE_ICON_256.PNG"
 
-    chmod +x "$pkg_src/scripts/"*
-    tar czf "$staging/scripts.tar.gz" -C "$pkg_src/scripts" .
+    mkdir -p "$staging/scripts"
+    cp "$pkg_src/scripts/"* "$staging/scripts/"
+    chmod +x "$staging/scripts/"*
 
     mkdir -p "$staging/conf"
     cp "$pkg_src/conf/"* "$staging/conf/"
 
     local spk_name="${CP_PKG}-${SPK_ARCH}-${PKG_VER}.spk"
-    tar cf "$OUT_DIR/$spk_name" -C "$staging" .
+    (cd "$staging" && tar cpf "$OUT_DIR/$spk_name" --owner=root --group=root \
+        package.tgz INFO PACKAGE_ICON.PNG PACKAGE_ICON_256.PNG scripts conf)
     info "Built: $OUT_DIR/$spk_name"
 }
 
@@ -650,14 +652,16 @@ build_sve() {
     cp "$ARCH_BUILD_DIR/PACKAGE_ICON.PNG" "$staging/PACKAGE_ICON.PNG"
     cp "$ARCH_BUILD_DIR/PACKAGE_ICON_256.PNG" "$staging/PACKAGE_ICON_256.PNG"
 
-    chmod +x "$pkg_src/scripts/"*
-    tar czf "$staging/scripts.tar.gz" -C "$pkg_src/scripts" .
+    mkdir -p "$staging/scripts"
+    cp "$pkg_src/scripts/"* "$staging/scripts/"
+    chmod +x "$staging/scripts/"*
 
     mkdir -p "$staging/conf"
     cp "$pkg_src/conf/"* "$staging/conf/"
 
     local spk_name="${SVE_PKG}-${SPK_ARCH}-${PKG_VER}.spk"
-    tar cf "$OUT_DIR/$spk_name" -C "$staging" .
+    (cd "$staging" && tar cpf "$OUT_DIR/$spk_name" --owner=root --group=root \
+        package.tgz INFO PACKAGE_ICON.PNG PACKAGE_ICON_256.PNG scripts conf)
     info "Built: $OUT_DIR/$spk_name"
 }
 
