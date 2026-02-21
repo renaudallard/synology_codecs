@@ -1,5 +1,7 @@
 # Synology Codecs — HEVC/AAC for DSM 7
 
+> **Work in progress** — The SPK packages cannot be installed yet. DSM 7.2.2+ rejects unsigned packages that use the CodecPack package name with a root privilege error, even with minimal privilege settings. A workaround is being investigated.
+
 Drop-in replacement SPK packages that restore **HEVC, H.264, and AAC** codec support removed from Synology's Advanced Media Extensions (AME) starting with v4.0 in DSM 7.2.2.
 
 ## Why
