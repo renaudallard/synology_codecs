@@ -12,5 +12,4 @@ SetPackStatus() {
   status=$1
   echo "{\"status\": \"$status\"}" > ${PACK_STATUS_CONF}
   chmod 644 ${PACK_STATUS_CONF}
-  chown ${PKG_NAME}:${PKG_NAME} ${PACK_STATUS_CONF}
 }

@@ -249,7 +249,7 @@ Building locally from source avoids both issues. The build script automates the 
 - Package version `99.0.0` ensures Package Center treats it as newer than any official release
 - Both packages use `startable="no"` since they provide files only (no daemon)
 - Both packages use `silent_install/upgrade/uninstall="yes"` matching official behavior
-- Both packages declare `run-as: package` privilege
+- Both packages run all scripts as the `package` user (no root privileges required), allowing installation on unmodified DSM 7.x without Synology code-signing
 - The aarch64 SPK covers all ARM64 Synology platforms (rtd1296, rtd1619b, armada37xx) — the `libsynoame-license.so` is identical across all three
 - The SPK decryption keys are public knowledge, extracted from `libsynocodesign.so` by the [SynoXtract](https://github.com/prt1999/SynoXtract) and [synodecrypt](https://github.com/synacktiv/synodecrypt) projects
 - FFmpeg and all codec libraries are compiled from source — no pre-built third-party binaries are trusted

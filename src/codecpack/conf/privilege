@@ -1,25 +1,12 @@
 {
     "ctrl-script": [
-        {"action": "start", "run-as": "root"},
-        {"action": "stop", "run-as": "root"},
-        {"action": "preuninst", "run-as": "root"},
-        {"action": "postuninst", "run-as": "root"},
-        {"action": "postinst", "run-as": "root"}
+        {"action": "start", "run-as": "package"},
+        {"action": "stop", "run-as": "package"},
+        {"action": "preuninst", "run-as": "package"},
+        {"action": "postuninst", "run-as": "package"},
+        {"action": "postinst", "run-as": "package"}
     ],
     "defaults": {"run-as": "package"},
     "executable": [],
-    "tool": [
-        {
-            "group": "package",
-            "permission": "4755",
-            "relpath": "usr/bin/synoame-bin-check-license",
-            "user": "root"
-        },
-        {
-            "group": "package",
-            "permission": "4755",
-            "relpath": "usr/bin/synoame-bin-request-codec",
-            "user": "root"
-        }
-    ]
+    "tool": []
 }
