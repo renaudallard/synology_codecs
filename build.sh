@@ -11,6 +11,7 @@ NJOBS=$(nproc)
 HOST_ARCH="$(uname -m)"
 
 AME_VER="3.1.0-3005"
+SVE_VER="1.0.0-0015"
 CP_PKG="CodecPack"
 SVE_PKG="SurveillanceVideoExtension"
 PKG_VER="99.0.0-9999"
@@ -28,6 +29,7 @@ set_arch_config() {
     case "$TARGET_ARCH" in
         x86_64)
             AME_SPK_ARCH="x86_64"
+            SVE_SPK_ARCH="x86_64"
             SPK_ARCH="x86_64"
             INFO_ARCH="x86_64"
             ORIG_SO_MD5="09e3adeafe85b353c9427d93ef0185e9"
@@ -39,6 +41,7 @@ set_arch_config() {
             ;;
         aarch64)
             AME_SPK_ARCH="rtd1296"
+            SVE_SPK_ARCH="armv8"
             SPK_ARCH="aarch64"
             INFO_ARCH="rtd1296 rtd1619b armada37xx"
             ORIG_SO_MD5="f0b33cc2ec241a43f02a332bcbf0d701"
@@ -72,6 +75,13 @@ set_arch_config() {
         "https://global.synologydownload.com/download/Package/spk/CodecPack/${AME_VER}/${AME_SPK_NAME}"
         "https://global.download.synology.com/download/Package/spk/CodecPack/${AME_VER}/${AME_SPK_NAME}"
         "https://archive.synology.com/download/Package/spk/CodecPack/${AME_VER}/${AME_SPK_NAME}"
+    )
+
+    SVE_SPK_NAME="SurveillanceVideoExtension-${SVE_SPK_ARCH}-${SVE_VER}.spk"
+    SVE_URLS=(
+        "https://global.synologydownload.com/download/Package/spk/SurveillanceVideoExtension/${SVE_VER}/${SVE_SPK_NAME}"
+        "https://global.download.synology.com/download/Package/spk/SurveillanceVideoExtension/${SVE_VER}/${SVE_SPK_NAME}"
+        "https://archive.synology.com/download/Package/spk/SurveillanceVideoExtension/${SVE_VER}/${SVE_SPK_NAME}"
     )
 }
 
@@ -292,6 +302,19 @@ download_ame() {
     [ -n "$so_file" ] || die "libsynoame-license.so not found in AME package"
 
     cp "$so_file" "$ARCH_BUILD_DIR/libsynoame-license.so"
+
+    # Extract additional proprietary files for package completeness
+    info "Extracting additional AME files..."
+    local extras="$ARCH_BUILD_DIR/ame_extras"
+    mkdir -p "$extras/usr_lib" "$extras/etc/synocrond"
+    cp "$ame_tmp"/usr/lib/libsynoame-*.so "$extras/usr_lib/" 2>/dev/null || true
+    # Remove the license .so (we handle it separately with patching)
+    rm -f "$extras/usr_lib/libsynoame-license.so"
+    for f in logrotate.conf log_whitelist syslog-ng.conf; do
+        cp "$ame_tmp/etc/$f" "$extras/etc/" 2>/dev/null || true
+    done
+    cp "$ame_tmp/etc/synocrond/CodecPack.conf" "$extras/etc/synocrond/" 2>/dev/null || true
+
     rm -rf "$ame_tmp" "$ame_tar"
 
     local actual_md5
@@ -318,6 +341,57 @@ patch_so() {
         die "Patched .so MD5 mismatch: expected $PATCHED_SO_MD5, got $actual_md5"
     fi
     info "Patched .so MD5 verified: $actual_md5"
+}
+
+# ── step 2b: download & extract SVE ───────────────────────────────────
+download_sve() {
+    local sve_spk="$CACHE_DIR/sve_${TARGET_ARCH}.spk"
+    if [ -f "$sve_spk" ]; then
+        info "SVE SPK for ${TARGET_ARCH} already cached"
+    elif [ -f "$CACHE_DIR/$SVE_SPK_NAME" ]; then
+        info "Using manually placed $SVE_SPK_NAME"
+        cp "$CACHE_DIR/$SVE_SPK_NAME" "$sve_spk"
+    else
+        info "Downloading SVE ${SVE_VER} for ${TARGET_ARCH}..."
+        local ok=false
+        for url in "${SVE_URLS[@]}"; do
+            if curl -fSL -o "$sve_spk" "$url" 2>/dev/null; then
+                ok=true
+                break
+            fi
+            info "  Mirror failed, trying next..."
+        done
+        if [ "$ok" != "true" ]; then
+            die "All SVE download mirrors failed. You can manually download the SVE SPK and place it at: $CACHE_DIR/$SVE_SPK_NAME"
+        fi
+    fi
+
+    info "Decrypting SVE SPK..."
+    local sve_tar="$ARCH_BUILD_DIR/sve_decrypted.tar"
+    decrypt_spk "$sve_spk" "$sve_tar"
+
+    info "Extracting SVE proprietary files..."
+    local sve_tmp="$ARCH_BUILD_DIR/sve_tmp"
+    mkdir -p "$sve_tmp"
+    tar xf "$sve_tar" -C "$sve_tmp" package.tgz
+
+    local pkg_type
+    pkg_type=$(file -b "$sve_tmp/package.tgz")
+    if echo "$pkg_type" | grep -q "XZ"; then
+        tar xJf "$sve_tmp/package.tgz" -C "$sve_tmp"
+    else
+        tar xzf "$sve_tmp/package.tgz" -C "$sve_tmp"
+    fi
+
+    local extras="$ARCH_BUILD_DIR/sve_extras"
+    mkdir -p "$extras/usr_lib" "$extras/etc"
+    cp "$sve_tmp"/usr/lib/libsynosvsext-*.so "$extras/usr_lib/" 2>/dev/null || true
+    for f in logrotate.conf log_whitelist syslog-ng.conf; do
+        cp "$sve_tmp/etc/$f" "$extras/etc/" 2>/dev/null || true
+    done
+
+    rm -rf "$sve_tmp" "$sve_tar"
+    info "SVE extras extracted"
 }
 
 # ── step 3: build FFmpeg from source ──────────────────────────────────
@@ -631,6 +705,18 @@ build_codecpack() {
     sed -i "s/^arch=.*/arch=\"${INFO_ARCH}\"/" "$staging/package/pack/INFO"
 
     cp "$ARCH_BUILD_DIR/libsynoame-license.so" "$staging/package/usr/lib/libsynoame-license.so"
+
+    # Copy additional proprietary libraries from official AME
+    if [ -d "$ARCH_BUILD_DIR/ame_extras/usr_lib" ]; then
+        cp "$ARCH_BUILD_DIR"/ame_extras/usr_lib/libsynoame-*.so "$staging/package/usr/lib/"
+    fi
+
+    # Copy etc/ configs from official AME
+    if [ -d "$ARCH_BUILD_DIR/ame_extras/etc" ]; then
+        mkdir -p "$staging/package/etc/synocrond"
+        cp -a "$ARCH_BUILD_DIR/ame_extras/etc/"* "$staging/package/etc/"
+    fi
+
     chmod +x "$staging/package/usr/bin/synoame-bin-check-license"
     chmod +x "$staging/package/usr/bin/synoame-bin-request-codec"
 
@@ -677,6 +763,17 @@ build_sve() {
     # Also update pack/INFO arch to match target
     sed -i "s/^arch=.*/arch=\"${INFO_ARCH}\"/" "$staging/package/pack/INFO"
 
+    # Copy proprietary libraries from official SVE
+    if [ -d "$ARCH_BUILD_DIR/sve_extras/usr_lib" ]; then
+        mkdir -p "$staging/package/usr/lib"
+        cp "$ARCH_BUILD_DIR"/sve_extras/usr_lib/libsynosvsext-*.so "$staging/package/usr/lib/"
+    fi
+
+    # Copy etc/ configs from official SVE
+    if [ -d "$ARCH_BUILD_DIR/sve_extras/etc" ]; then
+        cp -a "$ARCH_BUILD_DIR/sve_extras/etc/"* "$staging/package/etc/"
+    fi
+
     tar czf "$staging/package.tgz" -C "$staging/package" .
     rm -rf "$staging/package"
 
@@ -706,12 +803,13 @@ build_for_arch() {
     info "=== Building for ${TARGET_ARCH} (host: ${HOST_ARCH}) ==="
 
     check_deps
-    rm -rf "$ARCH_BUILD_DIR/ame_tmp" \
+    rm -rf "$ARCH_BUILD_DIR/ame_tmp" "$ARCH_BUILD_DIR/sve_tmp" \
            "$ARCH_BUILD_DIR/codecpack_staging" "$ARCH_BUILD_DIR/sve_staging"
     mkdir -p "$ARCH_BUILD_DIR" "$CACHE_DIR" "$OUT_DIR"
 
     download_ame
     patch_so
+    download_sve
     build_all_ffmpeg
     generate_icons
     build_codecpack

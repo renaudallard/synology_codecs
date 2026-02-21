@@ -139,21 +139,28 @@ cd synology_codecs
 The script will:
 
 1. Download AME 3.1.0-3005 from Synology's CDN (tries multiple mirrors automatically)
-2. Decrypt the encrypted SPK and extract `libsynoame-license.so`
-3. Apply the five binary patches (with MD5 verification before and after)
-4. Clone and compile all codec libraries and FFmpeg from source as a static binary
-5. Package everything into two SPK files in `out/`
+2. Decrypt the encrypted SPK, extract and patch `libsynoame-license.so`, and extract additional proprietary libraries and config files
+3. Download SVE 1.0.0-0015 and extract its proprietary libraries and config files
+4. Apply the five binary patches (with MD5 verification before and after)
+5. Clone and compile all codec libraries and FFmpeg from source as a static binary
+6. Package everything into two SPK files in `out/`
 
 Source repos and downloads are cached in `build/cache/` so subsequent builds are fast. Per-architecture build artifacts are kept in separate directories (`build/x86_64/`, `build/aarch64/`).
 
-If the AME download fails (e.g., Synology removes the file from their CDN), you can manually download the SPK and place it in `build/cache/`:
+If the AME or SVE download fails (e.g., Synology removes the file from their CDN), you can manually download the SPK and place it in `build/cache/`:
 
 ```sh
-# For x86_64:
+# AME for x86_64:
 cp CodecPack-x86_64-3.1.0-3005.spk build/cache/
 
-# For aarch64:
+# AME for aarch64:
 cp CodecPack-rtd1296-3.1.0-3005.spk build/cache/
+
+# SVE for x86_64:
+cp SurveillanceVideoExtension-x86_64-1.0.0-0015.spk build/cache/
+
+# SVE for aarch64:
+cp SurveillanceVideoExtension-armv8-1.0.0-0015.spk build/cache/
 ```
 
 ## Install
@@ -204,7 +211,7 @@ Then test with your apps:
     │       ├── pack/                # INFO, bin/ and lib/ with ffmpeg (placed by build)
     │       ├── lib/                 # symlinks to pack/lib/ (incl. synoface, libva)
     │       ├── usr/bin/             # synoame-bin-check-license, synoame-bin-request-codec (stubs)
-    │       └── usr/lib/             # patched .so (placed by build)
+    │       └── usr/lib/             # patched .so + additional libsynoame-*.so (placed by build)
     └── sve/                         # SurveillanceVideoExtension SPK sources
         ├── INFO
         ├── conf/
@@ -212,7 +219,10 @@ Then test with your apps:
         │   └── resource             # Package resource config
         ├── scripts/
         │   ├── common               # Shared variables and SetPackStatus helper
+        │   ├── pkg_activation       # Codec activation (sources synocodectool stub)
+        │   ├── preinst              # Sources pkg_activation for codec activation
         │   ├── postinst             # Sets pack status to up_to_date
+        │   ├── preupgrade           # Sources pkg_activation for codec activation
         │   ├── preuninst            # Saves pack INFO for post-uninstall cleanup
         │   ├── postuninst           # Cleans up status conf and download cache
         │   ├── start-stop-status    # Always reports running
@@ -220,7 +230,8 @@ Then test with your apps:
         └── package/
             ├── bin/                 # synocodectool (stub)
             ├── pack/                # HAS_H264 marker, INFO, ffmpeg (placed by build)
-            └── lib/                 # symlink to pack/lib/ffmpeg33-for-surveillance
+            ├── lib/                 # symlink to pack/lib/ffmpeg33-for-surveillance
+            └── usr/lib/             # libsynosvsext-*.so (placed by build from official SVE)
 ```
 
 ## Why no pre-built downloads?

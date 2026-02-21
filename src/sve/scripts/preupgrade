@@ -1,2 +1,7 @@
 #!/bin/sh
+
+. "$(dirname "$0")/pkg_activation"
+
+activate_codec || svs_cms_rec_activate || true
+
 exit 0

@@ -1,0 +1,20 @@
+#!/bin/sh
+
+ACTIVATE_CODEC_NAME="h264svs_dec"
+PKG_DIR="${SYNOPKG_PKGINST_TEMP_DIR}"
+SYNO_CODEC_TOOL="${PKG_DIR}/bin/synocodectool"
+
+activate_codec() {
+    if $SYNO_CODEC_TOOL --check_codec_activated "$ACTIVATE_CODEC_NAME" 2>/dev/null; then
+        return 0
+    fi
+    if $SYNO_CODEC_TOOL --activate_codec "$ACTIVATE_CODEC_NAME" --pkgname surveillance --need_dsm_notification false 2>/dev/null; then
+        return 0
+    fi
+    return 0
+}
+
+svs_cms_rec_activate() {
+    $SYNO_CODEC_TOOL --svs_cms_rec_activate "$ACTIVATE_CODEC_NAME" 2>/dev/null
+    return 0
+}
