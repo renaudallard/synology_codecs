@@ -1,12 +1,3 @@
 {
-    "ctrl-script": [
-        {"action": "start", "run-as": "package"},
-        {"action": "stop", "run-as": "package"},
-        {"action": "preuninst", "run-as": "package"},
-        {"action": "postuninst", "run-as": "package"},
-        {"action": "postinst", "run-as": "package"}
-    ],
-    "defaults": {"run-as": "package"},
-    "executable": [],
-    "tool": []
+    "defaults": {"run-as": "package"}
 }
