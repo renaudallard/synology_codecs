@@ -17,7 +17,7 @@ Both packages are built for **x86_64** (Intel/AMD) and **aarch64** (ARM64: rtd12
 
 ## How it works
 
-**FFmpeg built from source** — The build script compiles FFmpeg 7.1 and all codec libraries from their official upstream repositories as a fully static binary. No pre-built third-party binaries are used. Cross-compilation is supported in both directions (x86_64 host building aarch64, or vice versa).
+**FFmpeg built from source** — The build script compiles FFmpeg 7.1.3 and all codec libraries from their official upstream repositories as a fully static binary. No pre-built third-party binaries are used. Cross-compilation is supported in both directions (x86_64 host building aarch64, or vice versa).
 
 Included codecs:
 
@@ -113,7 +113,7 @@ sudo zypper install git curl xz cmake autoconf automake libtool \
 
 ```sh
 sudo apk add build-base git curl xz cmake autoconf automake libtool \
-    python3 py3-pip py3-msgpack libsodium-dev
+    pkgconf python3 py3-pip py3-msgpack libsodium-dev
 pip3 install pysodium
 ```
 
@@ -174,14 +174,12 @@ sudo synopkg uninstall CodecPack
 # Install the replacement CodecPack
 sudo synopkg install /path/to/CodecPack-*.spk
 
-# Start the package
-sudo synopkg start CodecPack
-
 # If you use Surveillance Station, also install the SVE replacement
 # (this replaces the official one in place)
 sudo synopkg install /path/to/SurveillanceVideoExtension-*.spk
-sudo synopkg start SurveillanceVideoExtension
 ```
+
+Both packages are file-only (`startable="no"`) and become active immediately after installation. No need to start them manually.
 
 If the installer cannot write activation files, it will print a one-line `sudo` command to run via SSH.
 
