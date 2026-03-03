@@ -1,7 +1,5 @@
 # Synology Codecs — HEVC/AAC for DSM 7
 
-> **Work in progress** — The SPK packages cannot be installed yet. DSM 7.2.2+ rejects unsigned packages that use the CodecPack package name with a root privilege error, even with minimal privilege settings. A workaround is being investigated.
-
 Drop-in replacement SPK packages that restore **HEVC, H.264, and AAC** codec support removed from Synology's Advanced Media Extensions (AME) starting with v4.0 in DSM 7.2.2.
 
 ## Why
@@ -74,7 +72,7 @@ Both the original and patched checksums are verified during the build.
 ```sh
 sudo apt update
 sudo apt install build-essential git curl xz-utils cmake autoconf automake libtool \
-    python3 python3-pysodium python3-msgpack
+    pkg-config python3 python3-pysodium python3-msgpack
 
 # Cross-compilation (optional):
 # Building aarch64 targets on an x86_64 host:
@@ -88,7 +86,7 @@ sudo apt install gcc-x86-64-linux-gnu g++-x86-64-linux-gnu
 ```sh
 sudo dnf groupinstall "Development Tools"
 sudo dnf install git curl xz cmake autoconf automake libtool \
-    python3 python3-pysodium python3-msgpack
+    pkg-config python3 python3-pysodium python3-msgpack
 
 # Cross-compilation (optional, Fedora only):
 sudo dnf install gcc-aarch64-linux-gnu gcc-c++-aarch64-linux-gnu
@@ -108,7 +106,7 @@ Note: `python-pysodium` is in the [AUR](https://aur.archlinux.org/packages/pytho
 ```sh
 sudo zypper install -t pattern devel_basis
 sudo zypper install git curl xz cmake autoconf automake libtool \
-    python3 python3-pysodium python3-msgpack
+    pkg-config python3 python3-pysodium python3-msgpack
 ```
 
 ### Alpine Linux
@@ -167,11 +165,25 @@ cp SurveillanceVideoExtension-armv8-1.0.0-0015.spk build/cache/
 
 ## Install
 
-1. Open **Package Center** on your NAS
-2. **Uninstall** the official *Advanced Media Extensions* if present
-3. Click **Manual Install** and select the `CodecPack` SPK matching your NAS architecture
-4. If you use Surveillance Station, install the `SurveillanceVideoExtension` SPK the same way — it will replace the official one in place (you cannot uninstall the official Surveillance Video Extension without removing Surveillance Station first)
-5. If the installer cannot write activation files, it will print a one-line `sudo` command to run via SSH
+Copy the SPK files to your NAS (e.g. via `scp`) and install via SSH:
+
+```sh
+# Uninstall the official Advanced Media Extensions if present
+sudo synopkg uninstall CodecPack
+
+# Install the replacement CodecPack
+sudo synopkg install /path/to/CodecPack-*.spk
+
+# Start the package
+sudo synopkg start CodecPack
+
+# If you use Surveillance Station, also install the SVE replacement
+# (this replaces the official one in place)
+sudo synopkg install /path/to/SurveillanceVideoExtension-*.spk
+sudo synopkg start SurveillanceVideoExtension
+```
+
+If the installer cannot write activation files, it will print a one-line `sudo` command to run via SSH.
 
 ## Verify
 

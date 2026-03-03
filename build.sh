@@ -87,7 +87,7 @@ set_arch_config() {
 
 check_deps() {
     local missing=()
-    for cmd in tar curl xz python3 make git cmake; do
+    for cmd in tar curl xz python3 make git cmake pkg-config autoconf automake libtool file; do
         command -v "$cmd" >/dev/null || missing+=("$cmd")
     done
     if [ ${#missing[@]} -gt 0 ]; then
