@@ -19,6 +19,8 @@ Both packages are built for **x86_64** (Intel/AMD) and **aarch64** (ARM64: rtd12
 
 **FFmpeg built from source** — The build script compiles FFmpeg 7.1.3 and all codec libraries from their official upstream repositories as a fully static binary. No pre-built third-party binaries are used. Cross-compilation is supported in both directions (x86_64 host building aarch64, or vice versa).
 
+**Surveillance Station libraries** — Surveillance Station does not run an ffmpeg binary. Its daemons link directly against the FFmpeg 3.3 shared libraries (`libavcodec.so.57`, `libavformat.so.57`, ...) shipped by the SVE package. The build script compiles FFmpeg 3.3.9 with its native H.264, HEVC and AAC decoders and lame for MP3, and installs these libraries in the SVE package. They are built with Synology's DSM 7.0 GPL toolchain (glibc 2.26), downloaded from Synology's site, so they load on any DSM 7 system. This toolchain only runs on x86_64, so the SVE package can only be built on an x86_64 host.
+
 Included codecs:
 
 | Library | Version | Codec |
@@ -140,10 +142,11 @@ The script will:
 
 1. Download AME 3.1.0-3005 from Synology's CDN (tries multiple mirrors automatically)
 2. Decrypt the encrypted SPK, extract and patch `libsynoame-license.so`, and extract additional proprietary libraries and config files
-3. Download SVE 1.0.0-0015 and extract its proprietary libraries and config files
+3. On an x86_64 host, download SVE 1.0.0-0015 and extract its proprietary libraries and config files
 4. Apply the five binary patches (with MD5 verification before and after)
 5. Clone and compile all codec libraries and FFmpeg from source as a static binary
-6. Package everything into two SPK files in `out/`
+6. On an x86_64 host, download the Synology DSM 7.0 toolchain and build the FFmpeg 3.3 shared libraries for Surveillance Station
+7. Package everything into two SPK files in `out/` (only the CodecPack SPK on an aarch64 host)
 
 Source repos and downloads are cached in `build/cache/` so subsequent builds are fast. Per-architecture build artifacts are kept in separate directories (`build/x86_64/`, `build/aarch64/`).
 
@@ -191,8 +194,9 @@ SSH into the NAS and check that HEVC is available:
 # CodecPack — should show libx265
 /var/packages/CodecPack/target/pack/bin/ffmpeg41 -encoders 2>/dev/null | grep hevc
 
-# SVE — should show libx265
-/var/packages/SurveillanceVideoExtension/target/pack/lib/ffmpeg33-for-surveillance/ffmpeg -encoders 2>/dev/null | grep hevc
+# SVE — Surveillance Station should use the SVE libraries
+readlink /var/packages/SurveillanceStation/target/lib/ffmpeg
+ls /var/packages/SurveillanceVideoExtension/target/lib/ffmpeg33-for-surveillance/
 ```
 
 Then test with your apps:
@@ -241,7 +245,7 @@ Then test with your apps:
         │   └── ...
         └── package/
             ├── bin/                 # synocodectool (stub)
-            ├── pack/                # HAS_H264 marker, INFO, ffmpeg (placed by build)
+            ├── pack/                # HAS_H264 marker, INFO, FFmpeg 3.3 libraries (placed by build)
             ├── lib/                 # symlink to pack/lib/ffmpeg33-for-surveillance
             └── usr/lib/             # libsynosvsext-*.so (placed by build from official SVE)
 ```
@@ -264,7 +268,7 @@ Building locally from source avoids both issues. The build script automates the 
 - Both packages run all scripts as the `package` user (no root privileges required), allowing installation on unmodified DSM 7.x without Synology code-signing
 - The aarch64 SPK covers all ARM64 Synology platforms (rtd1296, rtd1619b, armada37xx) — the `libsynoame-license.so` is identical across all three
 - The SPK decryption keys are public knowledge, extracted from `libsynocodesign.so` by the [SynoXtract](https://github.com/prt1999/SynoXtract) and [synodecrypt](https://github.com/synacktiv/synodecrypt) projects
-- FFmpeg and all codec libraries are compiled from source — no pre-built third-party binaries are trusted
+- FFmpeg and all codec libraries are compiled from source — the only pre-built third-party binary used is Synology's GPL toolchain for the SVE libraries
 
 ## License
 

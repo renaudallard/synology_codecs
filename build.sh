@@ -16,6 +16,13 @@ CP_PKG="CodecPack"
 SVE_PKG="SurveillanceVideoExtension"
 PKG_VER="99.0.0-9999"
 
+# Surveillance Station links against FFmpeg 3.3 shared libraries, built
+# with the DSM 7.0 toolchain so they only need glibc 2.26.
+FF33_VER="n3.3.9"
+SYNO_TC_URL="https://global.synologydownload.com/download/ToolChain/toolchain/7.0-41890"
+SVE_LIBS=(libavcodec.so.57 libavdevice.so.57 libavfilter.so.6 libavformat.so.57
+          libavutil.so.55 libpostproc.so.54 libswresample.so.2 libswscale.so.4)
+
 # SPK decryption key (keytype 3) — extracted from libsynocodesign.so
 SPK_SIGNING_KEY="FECAA2DD065A86A68E5FE86BA34CD8481590A79FA2C29A7D69F25A3B3BFAA19E"
 SPK_MASTER_KEY="CF0D8D6ECB95EF97D0AC6A7021D99124C699808CF2CC5157DFEA5EBF15C805E7"
@@ -38,6 +45,8 @@ set_arch_config() {
             PATCH_BYTES="B8 01 00 00 00 C3"  # x86_64: mov eax,1; ret
             VPX_TARGET="x86_64-linux-gcc"
             NEEDS_NASM=true
+            SYNO_TC_TXZ="Intel%20x86%20Linux%204.4.180%20%28GeminiLake%29/geminilake-gcc750_glibc226_x86_64-GPL.txz"
+            SYNO_TC_HOST="x86_64-pc-linux-gnu"
             ;;
         aarch64)
             AME_SPK_ARCH="rtd1296"
@@ -50,6 +59,8 @@ set_arch_config() {
             PATCH_BYTES="20 00 80 52 C0 03 5F D6"  # aarch64: mov w0,#1; ret
             VPX_TARGET="arm64-linux-gcc"
             NEEDS_NASM=false
+            SYNO_TC_TXZ="Realtek%20RTD129x%20Linux%204.4.180/rtd1296-gcc750_glibc226_armv8-GPL.txz"
+            SYNO_TC_HOST="aarch64-unknown-linux-gnu"
             ;;
         *)
             die "Unsupported architecture: $TARGET_ARCH (must be x86_64 or aarch64)"
@@ -60,6 +71,8 @@ set_arch_config() {
     ARCH_BUILD_DIR="$BUILD_DIR/$TARGET_ARCH"
     FF_SRC="$ARCH_BUILD_DIR/ffmpeg-src"
     FF_PREFIX="$ARCH_BUILD_DIR/ffmpeg-prefix"
+    SVE_SRC="$ARCH_BUILD_DIR/sve-src"
+    SVE_PREFIX="$ARCH_BUILD_DIR/sve-prefix"
 
     # Cross-compilation setup
     if [ "$HOST_ARCH" = "$TARGET_ARCH" ]; then
@@ -658,6 +671,75 @@ build_all_ffmpeg() {
     build_ffmpeg
 }
 
+# ── step 3b: build FFmpeg 3.3 shared libs for Surveillance Station ────
+fetch_syno_toolchain() {
+    SYNO_TC="$CACHE_DIR/$SYNO_TC_HOST"
+    if [ -x "$SYNO_TC/bin/${SYNO_TC_HOST}-gcc" ]; then return; fi
+    info "Downloading Synology DSM 7.0 toolchain for ${TARGET_ARCH}..."
+    local txz="$CACHE_DIR/${SYNO_TC_HOST}.txz"
+    curl -fSL -o "$txz" "$SYNO_TC_URL/$SYNO_TC_TXZ"
+    tar xJf "$txz" -C "$CACHE_DIR"
+    rm -f "$txz"
+}
+
+build_sve_lame() {
+    if [ -f "$SVE_PREFIX/lib/libmp3lame.a" ]; then return; fi
+    info "Building lame for SVE..."
+    rm -rf "$SVE_SRC/lame"
+    mkdir -p "$SVE_SRC/lame"
+    tar xzf "$CACHE_DIR/lame-3.100.tar.gz" -C "$SVE_SRC/lame" --strip-components=1
+    cd "$SVE_SRC/lame"
+    CC="$SYNO_TC/bin/${SYNO_TC_HOST}-gcc" CFLAGS="-O2" CXXFLAGS="" LDFLAGS="" \
+        AR="$SYNO_TC/bin/${SYNO_TC_HOST}-ar" RANLIB="$SYNO_TC/bin/${SYNO_TC_HOST}-ranlib" \
+        ./configure \
+        --prefix="$SVE_PREFIX" \
+        --host="$SYNO_TC_HOST" \
+        --enable-static --disable-shared --with-pic \
+        --disable-frontend --disable-decoder
+    make -j"$NJOBS"
+    make install
+}
+
+build_sve_ffmpeg() {
+    if [ -f "$SVE_PREFIX/lib/${SVE_LIBS[0]}" ]; then
+        info "SVE FFmpeg libraries already built"
+        return
+    fi
+    info "Building FFmpeg ${FF33_VER} shared libraries for SVE..."
+    git_clone "https://github.com/FFmpeg/FFmpeg.git" ffmpeg33 "$FF33_VER"
+    rm -rf "$SVE_SRC/ffmpeg"
+    cp -a "$CACHE_DIR/ffmpeg33" "$SVE_SRC/ffmpeg"
+    cd "$SVE_SRC/ffmpeg"
+
+    # pkg-config is disabled so nothing from the host leaks into the build.
+    # On x86_64 configure falls back to the nasm in $FF_PREFIX/bin when
+    # yasm is not installed.
+    CFLAGS="" CXXFLAGS="" LDFLAGS="" ./configure \
+        --prefix="$SVE_PREFIX" \
+        --enable-cross-compile \
+        --cross-prefix="$SYNO_TC/bin/${SYNO_TC_HOST}-" \
+        --arch="$TARGET_ARCH" \
+        --target-os=linux \
+        --pkg-config=false \
+        --extra-cflags="-I$SVE_PREFIX/include" \
+        --extra-ldflags="-L$SVE_PREFIX/lib" \
+        --enable-gpl \
+        --enable-shared --disable-static --enable-pic \
+        --disable-programs --disable-doc \
+        --enable-libmp3lame
+
+    make -j"$NJOBS"
+    make install
+    info "SVE FFmpeg libraries built"
+}
+
+build_sve_libs() {
+    fetch_syno_toolchain
+    mkdir -p "$SVE_SRC" "$SVE_PREFIX"
+    build_sve_lame
+    build_sve_ffmpeg
+}
+
 # ── step 4: generate icons ────────────────────────────────────────────
 generate_icons() {
     info "Generating placeholder icons..."
@@ -764,12 +846,14 @@ build_sve() {
     mkdir -p "$staging/package/pack/lib/ffmpeg33-for-surveillance" \
              "$staging/package/lib"
     chmod +x "$staging/package/bin/synocodectool"
-    # SS loads ffmpeg shared libs from lib/ffmpeg33-for-surveillance/ which
-    # we symlink to pack/lib/ffmpeg33-for-surveillance/.  Our static ffmpeg
-    # doesn't produce .so files, so place the full static binary there as
-    # a wrapper that SS can exec instead.
-    cp "$ARCH_BUILD_DIR/ffmpeg" "$staging/package/pack/lib/ffmpeg33-for-surveillance/ffmpeg"
-    chmod +x "$staging/package/pack/lib/ffmpeg33-for-surveillance/ffmpeg"
+    # Surveillance Station links its lib/ffmpeg to lib/ffmpeg33-for-surveillance/
+    # and its daemons load the FFmpeg 3.3 shared libraries from there.
+    local lib
+    for lib in "${SVE_LIBS[@]}"; do
+        cp -L "$SVE_PREFIX/lib/$lib" "$staging/package/pack/lib/ffmpeg33-for-surveillance/$lib"
+    done
+    "$SYNO_TC/bin/${SYNO_TC_HOST}-strip" --strip-unneeded \
+        "$staging/package/pack/lib/ffmpeg33-for-surveillance/"*
     ln -sf ../pack/lib/ffmpeg33-for-surveillance "$staging/package/lib/ffmpeg33-for-surveillance"
     # Also update pack/INFO arch to match target
     sed -i "s/^arch=.*/arch=\"${INFO_ARCH}\"/" "$staging/package/pack/INFO"
@@ -820,11 +904,18 @@ build_for_arch() {
 
     download_ame
     patch_so
-    download_sve
     build_all_ffmpeg
     generate_icons
     build_codecpack
-    build_sve
+
+    # The Synology toolchain binaries only run on x86_64
+    if [ "$HOST_ARCH" = "x86_64" ]; then
+        download_sve
+        build_sve_libs
+        build_sve
+    else
+        info "Skipping ${SVE_PKG}: the Synology toolchain needs an x86_64 host"
+    fi
 }
 
 # ── main ──────────────────────────────────────────────────────────────
